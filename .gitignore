@@ -8,7 +8,7 @@ venv/
 # Secret / generated files — NEVER commit these
 .token.key
 .token.enc
-.db_url
+.db_creds.enc
 bot_config.ini
 
 # Keep the examples

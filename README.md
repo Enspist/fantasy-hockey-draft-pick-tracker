@@ -13,6 +13,7 @@ config.py                      — reads bot_config.ini + decrypts token
 bot_config.ini.example         — template for the plain-text config
 webhook_server.py              — GitHub webhook listener (auto-pull on push to main)
 database/
+  credentials.py               — decrypts .db_creds.enc and builds the connection URL
   connection.py                — asyncpg pool + schema init
   queries.py                   — all SQL helpers
 cogs/
@@ -27,12 +28,12 @@ webhook.service                — systemd unit for the webhook server
 
 ### Files created by setup.py (never committed)
 
-| File | Contents |
-|---|---|
-| `bot_config.ini` | Guild ID, admin role, channel ID, webhook secret — edit by hand to change |
-| `.token.key` | Fernet encryption key (chmod 600) |
-| `.token.enc` | Encrypted Discord token (chmod 600) |
-| `.db_url` | PostgreSQL connection string (chmod 600) |
+| File | Contents | Format |
+|---|---|---|
+| `bot_config.ini` | Guild ID, admin role, channel ID, webhook settings | Plain text — edit by hand to change |
+| `.token.key` | Fernet encryption key (protects both encrypted files) | Binary, chmod 600 |
+| `.token.enc` | Encrypted Discord bot token | Fernet ciphertext, chmod 600 |
+| `.db_creds.enc` | Encrypted pickle: DB host, port, name, `FantasyBot` user + password | Encrypted pickle, chmod 600 |
 
 ---
 
@@ -58,11 +59,20 @@ pip install -r requirements.txt
 
 # 3. Run the setup wizard — this is the only setup step you need
 python setup.py
-#   Prompts for:
-#     • Guild ID, admin role name, picks channel ID  → bot_config.ini (plain text, editable)
-#     • GitHub webhook secret                        → bot_config.ini
-#     • Discord bot token                            → .token.enc + .token.key (encrypted, chmod 600)
-#     • PostgreSQL DATABASE_URL                      → .db_url (chmod 600)
+#
+#   PostgreSQL detection
+#     • Scans localhost:5432 and :5433 automatically
+#     • If not found locally, asks for remote IP + port
+#     • Asks for DB name, master username, master password
+#     • Creates the database and a 'FantasyBot' application user
+#     • Saves encrypted credentials to .db_creds.enc
+#
+#   Discord
+#     • Asks for bot token → encrypted in .token.enc (key in .token.key)
+#
+#   Bot settings  → bot_config.ini (plain text, editable by hand)
+#     • Guild ID, admin role name, picks channel ID
+#     • GitHub webhook secret + port
 
 # 4. Start the bot
 python main.py
