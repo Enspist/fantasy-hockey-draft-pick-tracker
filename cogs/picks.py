@@ -5,6 +5,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from database import queries
+from cogs.checks import has_admin_role
 
 ORDINALS = {
     1: "1st", 2: "2nd", 3: "3rd", 4: "4th", 5: "5th",
@@ -84,7 +85,7 @@ class Picks(commands.Cog):
         year="Draft year (e.g. 2026).",
         round="Round number (1–10).",
     )
-    @app_commands.default_permissions(administrator=True)
+    @has_admin_role()
     async def pick_add(
         self,
         interaction: discord.Interaction,
@@ -110,7 +111,7 @@ class Picks(commands.Cog):
         round="Round number (1–10).",
         new_owner="Team receiving the pick.",
     )
-    @app_commands.default_permissions(administrator=True)
+    @has_admin_role()
     async def pick_trade(
         self,
         interaction: discord.Interaction,
@@ -152,7 +153,7 @@ class Picks(commands.Cog):
         year="Draft year.",
         round="Round number (1–10).",
     )
-    @app_commands.default_permissions(administrator=True)
+    @has_admin_role()
     async def pick_remove(
         self,
         interaction: discord.Interaction,

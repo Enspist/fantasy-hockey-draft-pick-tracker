@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+.venv/
+
+# Secret / generated files — NEVER commit these
+.token.key
+.token.enc
+.db_url
+bot_config.ini
+
+# Keep the examples
+!bot_config.ini.example
+!.env.example

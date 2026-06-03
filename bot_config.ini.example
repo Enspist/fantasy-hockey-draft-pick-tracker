@@ -1,0 +1,16 @@
+[bot]
+# Your Discord server (guild) ID
+guild_id = 123456789012345678
+
+# The name of the Discord role that can use admin bot commands
+admin_role = Commissioner
+
+# The Discord channel ID where the draft pick board embed is posted
+picks_channel = 987654321098765432
+
+[webhook]
+# Secret you set in GitHub → Settings → Webhooks (used to verify payloads)
+webhook_secret = your_github_webhook_secret_here
+
+# Port the webhook listener runs on (default 5000)
+port = 5000

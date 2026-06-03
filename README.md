@@ -7,18 +7,32 @@ Discord bot to keep track of and manage draft picks. Designed to replace the Fan
 ## Project structure
 
 ```
+setup.py                       — one-time interactive setup (run first!)
 main.py                        — bot entry point
-config.py                      — loads env variables
+config.py                      — reads bot_config.ini + decrypts token
+bot_config.ini.example         — template for the plain-text config
+webhook_server.py              — GitHub webhook listener (auto-pull on push to main)
 database/
   connection.py                — asyncpg pool + schema init
   queries.py                   — all SQL helpers
 cogs/
+  checks.py                    — shared admin-role permission check
   admin.py                     — /setup
   teams.py                     — /team add|rename|remove|list
   picks.py                     — /pick add|trade|remove|refresh
   season.py                    — /season_prep
-fantasy-hockey-bot.service     — systemd unit for Linux
+fantasy-hockey-bot.service     — systemd unit for the bot
+webhook.service                — systemd unit for the webhook server
 ```
+
+### Files created by setup.py (never committed)
+
+| File | Contents |
+|---|---|
+| `bot_config.ini` | Guild ID, admin role, channel ID, webhook secret — edit by hand to change |
+| `.token.key` | Fernet encryption key (chmod 600) |
+| `.token.enc` | Encrypted Discord token (chmod 600) |
+| `.db_url` | PostgreSQL connection string (chmod 600) |
 
 ---
 
@@ -30,59 +44,83 @@ fantasy-hockey-bot.service     — systemd unit for Linux
 
 ---
 
-## Local setup
+## First-time setup (local or server)
 
 ```bash
 # 1. Clone and enter the repo
-git clone <repo-url>
+git clone https://github.com/Enspist/fantasy-hockey-draft-pick-tracker.git
 cd fantasy-hockey-draft-pick-tracker
 
-# 2. Create a virtual environment
-python -m venv venv
+# 2. Create a virtual environment and install dependencies
+python3 -m venv venv
 source venv/bin/activate   # Windows: venv\Scripts\activate
-
-# 3. Install dependencies
 pip install -r requirements.txt
 
-# 4. Configure environment
-cp .env.example .env
-# Edit .env — fill in DISCORD_TOKEN and DATABASE_URL
+# 3. Run the setup wizard — this is the only setup step you need
+python setup.py
+#   Prompts for:
+#     • Guild ID, admin role name, picks channel ID  → bot_config.ini (plain text, editable)
+#     • GitHub webhook secret                        → bot_config.ini
+#     • Discord bot token                            → .token.enc + .token.key (encrypted, chmod 600)
+#     • PostgreSQL DATABASE_URL                      → .db_url (chmod 600)
 
-# 5. Run
+# 4. Start the bot
 python main.py
 ```
+
+To change **guild/role/channel settings** later, open `bot_config.ini` in any text editor.
+To change the **Discord token**, run `python setup.py` again.
 
 ---
 
 ## Linux server deployment (systemd)
 
 ```bash
-# Copy files to server
+# Clone directly onto the server
 sudo mkdir -p /opt/fantasy-hockey-bot
-sudo cp -r . /opt/fantasy-hockey-bot
-
-# Create a dedicated user
-sudo useradd -r -s /bin/false discord
-
-# Set up virtualenv on the server
 cd /opt/fantasy-hockey-bot
-python3 -m venv venv
-venv/bin/pip install -r requirements.txt
+sudo git clone https://github.com/Enspist/fantasy-hockey-draft-pick-tracker.git .
 
-# Create .env from the example
-sudo cp .env.example .env
-sudo nano .env   # fill in your values
-sudo chown discord:discord .env
-sudo chmod 600 .env
+# Create a dedicated low-privilege user
+sudo useradd -r -s /bin/false discord
+sudo chown -R discord:discord /opt/fantasy-hockey-bot
 
-# Install and start the service
+# Set up virtualenv
+sudo -u discord python3 -m venv venv
+sudo -u discord venv/bin/pip install -r requirements.txt
+
+# Run the setup wizard as the service user
+sudo -u discord venv/bin/python setup.py
+
+# Install and start both services
 sudo cp fantasy-hockey-bot.service /etc/systemd/system/
+sudo cp webhook.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now fantasy-hockey-bot
+sudo systemctl enable --now fantasy-hockey-bot-webhook
 
 # View logs
 sudo journalctl -u fantasy-hockey-bot -f
+sudo journalctl -u fantasy-hockey-bot-webhook -f
 ```
+
+---
+
+## GitHub auto-pull (webhook server)
+
+When you push to `main`, GitHub calls `http://<server>:<port>/webhook` and the
+`webhook_server.py` process verifies the signature and runs `git pull origin main`.
+
+**GitHub setup:**
+1. Go to your repo → **Settings → Webhooks → Add webhook**
+2. **Payload URL**: `http://<your-server-ip>:5000/webhook`
+3. **Content type**: `application/json`
+4. **Secret**: the `webhook_secret` you entered during `python setup.py`
+5. **Events**: Just the push event
+
+> **Note:** If your server is behind a firewall, open the webhook port (default 5000)
+> for inbound connections, or use a reverse proxy (nginx) to forward a public HTTPS
+> endpoint to the Flask server.
 
 ---
 

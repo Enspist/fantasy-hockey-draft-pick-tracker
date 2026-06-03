@@ -3,6 +3,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from database import queries
+from cogs.checks import has_admin_role
 from cogs.picks import _round_label
 
 
@@ -15,7 +16,7 @@ class Season(commands.Cog):
         description="Post a checklist of pick movements to make in the fantasy app before the season.",
     )
     @app_commands.describe(year="The upcoming draft year to generate the checklist for.")
-    @app_commands.default_permissions(administrator=True)
+    @has_admin_role()
     async def season_prep(self, interaction: discord.Interaction, year: int) -> None:
         guild_id = interaction.guild_id
         traded = await queries.get_traded_picks(self.bot.pool, guild_id)
@@ -57,7 +58,6 @@ class Season(commands.Cog):
                 )
                 return
 
-        # Fallback: reply in current channel
         await interaction.response.send_message(embed=embed)
 
 

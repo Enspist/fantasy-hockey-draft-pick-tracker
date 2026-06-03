@@ -3,6 +3,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from database import queries
+from cogs.checks import has_admin_role
 from cogs.picks import post_pick_board
 
 
@@ -14,7 +15,7 @@ class Teams(commands.Cog):
 
     @team.command(name="add", description="Add a new team to the league.")
     @app_commands.describe(name="Team name to add.")
-    @app_commands.default_permissions(administrator=True)
+    @has_admin_role()
     async def team_add(self, interaction: discord.Interaction, name: str) -> None:
         try:
             await queries.add_team(self.bot.pool, interaction.guild_id, name)
@@ -29,7 +30,7 @@ class Teams(commands.Cog):
 
     @team.command(name="rename", description="Rename an existing team.")
     @app_commands.describe(old_name="Current team name.", new_name="New team name.")
-    @app_commands.default_permissions(administrator=True)
+    @has_admin_role()
     async def team_rename(self, interaction: discord.Interaction, old_name: str, new_name: str) -> None:
         updated = await queries.rename_team(self.bot.pool, interaction.guild_id, old_name, new_name)
         if not updated:
@@ -45,7 +46,7 @@ class Teams(commands.Cog):
 
     @team.command(name="remove", description="Remove a team from the league.")
     @app_commands.describe(name="Team name to remove.")
-    @app_commands.default_permissions(administrator=True)
+    @has_admin_role()
     async def team_remove(self, interaction: discord.Interaction, name: str) -> None:
         deleted = await queries.delete_team(self.bot.pool, interaction.guild_id, name)
         if not deleted:

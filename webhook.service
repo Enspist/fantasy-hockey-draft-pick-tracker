@@ -1,0 +1,14 @@
+[Unit]
+Description=Fantasy Hockey Bot — GitHub Webhook Auto-Pull Server
+After=network.target
+
+[Service]
+Type=simple
+User=discord
+WorkingDirectory=/opt/fantasy-hockey-bot
+ExecStart=/opt/fantasy-hockey-bot/venv/bin/python webhook_server.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

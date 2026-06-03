@@ -3,6 +3,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from database import queries
+from cogs.checks import has_admin_role
 
 
 class Admin(commands.Cog):
@@ -11,7 +12,7 @@ class Admin(commands.Cog):
 
     @app_commands.command(name="setup", description="Set the channel where pick standings are displayed.")
     @app_commands.describe(channel="The channel to post the draft pick board in.")
-    @app_commands.default_permissions(administrator=True)
+    @has_admin_role()
     async def setup(self, interaction: discord.Interaction, channel: discord.TextChannel) -> None:
         await queries.set_channel(self.bot.pool, interaction.guild_id, channel.id)
         await interaction.response.send_message(
