@@ -5,15 +5,19 @@ When a push lands on the 'main' branch GitHub sends a POST to this server.
 The server verifies the HMAC-SHA256 signature, then runs 'git pull origin main'
 so the production copy on your Linux server stays in sync automatically.
 
-Setup (GitHub side)
--------------------
-1. Go to your repo → Settings → Webhooks → Add webhook
-2. Payload URL : http://<your-server-ip>:<port>/webhook
-3. Content type: application/json
-4. Secret      : the webhook_secret value from bot_config.ini
-5. Events      : "Just the push event"
+Developer setup
+---------------
+1. Set WEBHOOK_SECRET below to any strong random string (keep it private).
+   Generate one with:  python -c "import secrets; print(secrets.token_hex(32))"
+2. Go to your repo → Settings → Webhooks → Add webhook
+   Payload URL  : http://<your-server-ip>:<port>/webhook
+   Content type : application/json
+   Secret       : the same value you put in WEBHOOK_SECRET below
+   Events       : Just the push event
+3. Set WEBHOOK_PORT below if you need a port other than 5000.
 
-The port and secret come from config.py (bot_config.ini + setup.py).
+These are infrastructure constants — users installing the bot do not need
+to know or configure them.
 """
 
 import hashlib
@@ -25,9 +29,11 @@ from pathlib import Path
 
 from flask import Flask, abort, jsonify, request
 
-# Add project root to path so config.py is importable
-sys.path.insert(0, str(Path(__file__).parent))
-import config
+# ── Developer-configured constants ────────────────────────────────────────────
+# Set WEBHOOK_SECRET once and enter the same value in GitHub's webhook settings.
+WEBHOOK_SECRET: str = "CHANGE_ME"   # <-- replace with your own secret
+WEBHOOK_PORT:   int = 5000
+# ──────────────────────────────────────────────────────────────────────────────
 
 logging.basicConfig(
     level=logging.INFO,
@@ -37,16 +43,16 @@ log = logging.getLogger("webhook")
 
 app = Flask(__name__)
 
-REPO_DIR = Path(__file__).parent.resolve()
+REPO_DIR      = Path(__file__).parent.resolve()
 TARGET_BRANCH = "main"
 
 
 def _verify_signature(payload: bytes, header_sig: str | None) -> bool:
-    """Return True when the GitHub HMAC-SHA256 signature matches our secret."""
+    """Return True when the GitHub HMAC-SHA256 signature matches WEBHOOK_SECRET."""
     if not header_sig:
         return False
     expected = "sha256=" + hmac.new(
-        config.WEBHOOK_SECRET.encode(), payload, hashlib.sha256
+        WEBHOOK_SECRET.encode(), payload, hashlib.sha256
     ).hexdigest()
     return hmac.compare_digest(expected, header_sig)
 
@@ -66,7 +72,7 @@ def _git_pull() -> tuple[str, int]:
 def webhook() -> tuple:
     # ── Signature check ───────────────────────────────────────────
     payload = request.get_data()
-    sig = request.headers.get("X-Hub-Signature-256")
+    sig     = request.headers.get("X-Hub-Signature-256")
 
     if not _verify_signature(payload, sig):
         log.warning("Rejected webhook — bad or missing signature.")
@@ -99,5 +105,10 @@ def health() -> tuple:
 
 
 if __name__ == "__main__":
-    log.info("Webhook server starting on port %d", config.WEBHOOK_PORT)
-    app.run(host="0.0.0.0", port=config.WEBHOOK_PORT)
+    if WEBHOOK_SECRET == "CHANGE_ME":
+        log.warning(
+            "WEBHOOK_SECRET is still set to the placeholder value. "
+            "Edit webhook_server.py and set a real secret before deploying."
+        )
+    log.info("Webhook server starting on port %d", WEBHOOK_PORT)
+    app.run(host="0.0.0.0", port=WEBHOOK_PORT)

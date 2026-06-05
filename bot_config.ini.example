@@ -9,8 +9,6 @@ admin_role = Commissioner
 picks_channel = 987654321098765432
 
 [webhook]
-# Secret you set in GitHub → Settings → Webhooks (used to verify payloads)
-webhook_secret = your_github_webhook_secret_here
-
 # Port the webhook listener runs on (default 5000)
+# The webhook secret is set directly in webhook_server.py by the developer.
 port = 5000

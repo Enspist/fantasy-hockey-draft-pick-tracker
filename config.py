@@ -53,5 +53,4 @@ GUILD_ID: int       = int(_ini["bot"]["guild_id"])
 ADMIN_ROLE: str     = _ini["bot"]["admin_role"]
 PICKS_CHANNEL: int  = int(_ini["bot"]["picks_channel"])
 
-WEBHOOK_SECRET: str = _ini["webhook"]["webhook_secret"]
 WEBHOOK_PORT: int   = int(_ini["webhook"].get("port", "5000"))

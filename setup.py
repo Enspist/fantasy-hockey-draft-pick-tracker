@@ -243,7 +243,7 @@ def _encrypt_token(key: bytes, token: str) -> None:
 
 def _write_config(
     guild_id: str, admin_role: str, picks_channel: str,
-    webhook_secret: str, webhook_port: str,
+    webhook_port: str,
 ) -> None:
     cfg = configparser.ConfigParser()
     cfg["bot"] = {
@@ -252,8 +252,7 @@ def _write_config(
         "picks_channel": picks_channel,
     }
     cfg["webhook"] = {
-        "webhook_secret": webhook_secret,
-        "port":           webhook_port,
+        "port": webhook_port,
     }
     with CONFIG_FILE.open("w") as fh:
         cfg.write(fh)
@@ -281,8 +280,10 @@ def main() -> None:
     print()
 
     # ── 2. Discord token ───────────────────────────────────────────
-    print("── Discord bot token (will be encrypted) ───────────────────")
-    token = _prompt("  Discord bot token", secret=True)
+    print("── Discord bot token ───────────────────────────────────────")
+    print("  Your token will be shown as you type so you can verify it.")
+    print("  It will be encrypted immediately after you press Enter.")
+    token = _prompt("  Discord bot token")
     print()
 
     # ── 3. Discord server / bot settings ──────────────────────────
@@ -294,9 +295,8 @@ def main() -> None:
 
     # ── 4. GitHub webhook ──────────────────────────────────────────
     print("── GitHub webhook settings ─────────────────────────────────")
-    print("  (Use this same secret in GitHub → repo → Settings → Webhooks)")
-    webhook_secret = _prompt("  Webhook secret")
-    webhook_port   = _prompt("  Webhook listener port", default="5000")
+    print("  (The webhook secret is set in webhook_server.py by the developer.)")
+    webhook_port = _prompt("  Webhook listener port", default="5000")
     print()
 
     # ── 5. Persist everything ──────────────────────────────────────
@@ -304,7 +304,7 @@ def main() -> None:
     fernet_key = _load_or_create_fernet_key()
     _save_db_creds(fernet_key, host, port, dbname)
     _encrypt_token(fernet_key, token)
-    _write_config(guild_id, admin_role, picks_channel, webhook_secret, webhook_port)
+    _write_config(guild_id, admin_role, picks_channel, webhook_port)
 
     print()
     print("=" * 60)
