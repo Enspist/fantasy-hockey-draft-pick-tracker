@@ -7,11 +7,13 @@ Discord bot to keep track of and manage draft picks. Designed to replace the Fan
 ## Project structure
 
 ```
-setup.py                       — one-time interactive setup (run first!)
-main.py                        — bot entry point
-config.py                      — reads bot_config.ini + decrypts token
-bot_config.ini.example         — template for the plain-text config
-webhook_server.py              — GitHub webhook listener (auto-pull on push to main)
+install.py / install.sh / install.cmd  — first-time installer (run once)
+run.py     / run.sh     / run.cmd      — start the bot + webhook server
+setup.py                               — interactive config wizard (called by installer)
+main.py                                — Discord bot entry point
+config.py                              — reads bot_config.ini + decrypts secrets
+bot_config.ini.example                 — template for the plain-text config
+webhook_server.py                      — GitHub webhook listener (auto-pull on push to main)
 database/
   credentials.py               — decrypts .db_creds.enc and builds the connection URL
   connection.py                — asyncpg pool + schema init
@@ -22,7 +24,7 @@ cogs/
   teams.py                     — /team add|rename|remove|list
   picks.py                     — /pick add|trade|remove|refresh
   season.py                    — /season_prep
-fantasy-hockey-bot.service     — systemd unit for the bot
+fantasy-hockey-bot.service     — systemd unit for the bot (alternative to run.sh)
 webhook.service                — systemd unit for the webhook server
 ```
 
@@ -47,39 +49,59 @@ webhook.service                — systemd unit for the webhook server
 
 ## First-time setup (local or server)
 
+Clone the repo, then run the installer once.  It handles everything — venv creation, dependency install, and the interactive config wizard.
+
+**Linux / macOS**
 ```bash
-# 1. Clone and enter the repo
 git clone https://github.com/Enspist/fantasy-hockey-draft-pick-tracker.git
 cd fantasy-hockey-draft-pick-tracker
-
-# 2. Create a virtual environment and install dependencies
-python3 -m venv venv
-source venv/bin/activate   # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-
-# 3. Run the setup wizard — this is the only setup step you need
-python setup.py
-#
-#   PostgreSQL detection
-#     • Scans localhost:5432 and :5433 automatically
-#     • If not found locally, asks for remote IP + port
-#     • Asks for DB name, master username, master password
-#     • Creates the database and a 'FantasyBot' application user
-#     • Saves encrypted credentials to .db_creds.enc
-#
-#   Discord
-#     • Asks for bot token → encrypted in .token.enc (key in .token.key)
-#
-#   Bot settings  → bot_config.ini (plain text, editable by hand)
-#     • Guild ID, admin role name, picks channel ID
-#     • GitHub webhook secret + port
-
-# 4. Start the bot
-python main.py
+bash install.sh
 ```
 
-To change **guild/role/channel settings** later, open `bot_config.ini` in any text editor.
-To change the **Discord token**, run `python setup.py` again.
+**Windows**
+```
+Double-click install.cmd
+— or —
+python install.py
+```
+
+**Any platform (Python directly)**
+```bash
+python install.py
+```
+
+The installer will:
+- Create `./venv` and install all dependencies
+- Auto-detect PostgreSQL on `localhost:5432` / `:5433` (asks for remote host/port if not found)
+- Prompt for DB name, master username, master password → creates the DB + `FantasyBot` app user
+- Prompt for Discord bot token → encrypted in `.token.enc` / `.token.key`
+- Prompt for guild ID, admin role, channel ID, webhook secret → saved to `bot_config.ini`
+
+To change **guild/role/channel settings** later, open `bot_config.ini` in any text editor.  
+To update the **Discord token** or **DB password**, run `python setup.py` again.
+
+---
+
+## Starting the bot
+
+**Linux / macOS**
+```bash
+bash run.sh
+```
+
+**Windows**
+```
+Double-click run.cmd
+— or —
+python run.py
+```
+
+**Any platform**
+```bash
+python run.py
+```
+
+The run script starts the **webhook server** (background) and the **Discord bot** (foreground).  Press `Ctrl+C` to stop both cleanly.  On Windows, `run.cmd` opens the webhook server in a separate console window.
 
 ---
 
