@@ -31,7 +31,7 @@ from flask import Flask, abort, jsonify, request
 
 # ── Developer-configured constants ────────────────────────────────────────────
 # Set WEBHOOK_SECRET once and enter the same value in GitHub's webhook settings.
-WEBHOOK_SECRET: str = "CHANGE_ME"   # <-- replace with your own secret
+WEBHOOK_SECRET: str = "@(j- 09i1-0mi20ic1-ei"
 WEBHOOK_PORT:   int = 5000
 # ──────────────────────────────────────────────────────────────────────────────
 
