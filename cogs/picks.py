@@ -20,15 +20,18 @@ def _round_label(r: int) -> str:
     return ORDINALS.get(r, f"{r}th")
 
 
-# ── Table embed builder ───────────────────────────────────────────────────────
+# ── Per-year embed builder ────────────────────────────────────────────────────
+
+def _year_embed_title(year: int) -> str:
+    return f"🏒 {year} Draft Picks"
+
 
 def _cell_content(team_name: str, year: int, picks: list) -> str:
     """
-    Build the text for a single cell (team × year) using range compression.
+    Picks for one team in one year, using range compression.
 
-    Consecutive own-picks collapse into a range (1 2 3 4 5 → 1-5).
-    Traded picks show the original owner in parens and break ranges
-    (own 1,2 | traded R3 from Alpha | own 4,5 → 1-2 3(Alpha) 4-5).
+    Consecutive own-picks collapse (1 2 3 4 5 → 1-5).
+    Traded picks show the original owner (3(Alpha)) and break ranges.
     Returns '-' if the team has no picks for that year.
     """
     team_picks = [
@@ -51,66 +54,67 @@ def _cell_content(team_name: str, year: int, picks: list) -> str:
             groups.append(f"{r}({orig})")
             i += 1
         else:
-            start = r
-            end   = r
-            j     = i + 1
+            start, end = r, r
+            j = i + 1
             while j < len(items) and items[j][1] == team_name and items[j][0] == end + 1:
                 end = items[j][0]
-                j  += 1
+                j += 1
             groups.append(f"{start}-{end}" if end > start else str(start))
             i = j
 
     return " ".join(groups)
 
 
-def _build_table(teams: list, picks: list, settings: dict) -> str:
-    current_year = datetime.now().year
-    years        = list(range(current_year, current_year + settings["years_ahead"]))
-    team_names   = [t["name"] for t in teams]
-
-    if not team_names:
-        return "(No teams have been added yet.)"
-
-    cells: dict[str, dict[int, str]] = {
-        name: {year: _cell_content(name, year, picks) for year in years}
-        for name in team_names
-    }
-
-    name_col_w = max((len(n) for n in team_names), default=4)
-    name_col_w = max(name_col_w, len("Team"))
-
-    year_col_w = {
-        y: max(len(str(y)), max((len(cells[n][y]) for n in team_names), default=1))
-        for y in years
-    }
-
-    header = "Team".ljust(name_col_w) + " | " + " | ".join(
-        str(y).ljust(year_col_w[y]) for y in years
+def _build_year_embed(year: int, teams: list, picks: list) -> discord.Embed:
+    """Build the embed for a single year — two columns: Team | Picks."""
+    embed = discord.Embed(
+        title=_year_embed_title(year),
+        color=discord.Color.blue(),
     )
-    sep = "-" * name_col_w + "-+-" + "-+-".join("-" * year_col_w[y] for y in years)
+
+    team_names = [t["name"] for t in teams]
+    if not team_names:
+        embed.description = "*(No teams have been added yet.)*"
+        return embed
+
+    year_cells = {name: _cell_content(name, year, picks) for name in team_names}
+
+    name_col_w  = max(max(len(n) for n in team_names), len("Team"))
+    picks_col_w = max(max(len(v) for v in year_cells.values()), len("Picks"))
+
+    header = "Team".ljust(name_col_w) + " | " + "Picks"
+    sep    = "-" * name_col_w + "-+-" + "-" * picks_col_w
 
     rows = [header, sep]
     for name in team_names:
-        row = name.ljust(name_col_w) + " | " + " | ".join(
-            cells[name][y].ljust(year_col_w[y]) for y in years
-        )
-        rows.append(row)
+        rows.append(name.ljust(name_col_w) + " | " + year_cells[name])
 
-    return "\n".join(rows)
-
-
-def _build_embed(teams: list, picks: list, settings: dict) -> discord.Embed:
-    embed = discord.Embed(
-        title="🏒 Fantasy Hockey Draft Pick Board",
-        color=discord.Color.blue(),
-    )
-    embed.description = f"```\n{_build_table(teams, picks, settings)}\n```"
+    embed.description = "```\n" + "\n".join(rows) + "\n```"
     return embed
 
 
 # ── Board poster ──────────────────────────────────────────────────────────────
 
+async def _post_or_update_year(
+    channel: discord.TextChannel,
+    bot_user: discord.ClientUser,
+    year: int,
+    embed: discord.Embed,
+) -> None:
+    """Edit the existing year embed if found; otherwise post a new message."""
+    title = _year_embed_title(year)
+    async for msg in channel.history(limit=200):
+        if msg.author == bot_user and msg.embeds and msg.embeds[0].title == title:
+            await msg.edit(embed=embed)
+            return
+    await channel.send(embed=embed)
+
+
 async def post_pick_board(bot: commands.Bot, guild_id: int) -> None:
+    """
+    Post or update one embed per tracked year in the configured channel.
+    Years are processed in ascending order so new posts appear chronologically.
+    """
     channel_id = await queries.get_channel(bot.pool, guild_id)
     if not channel_id:
         return
@@ -121,20 +125,16 @@ async def post_pick_board(bot: commands.Bot, guild_id: int) -> None:
     teams    = await queries.list_teams(bot.pool, guild_id)
     picks    = await queries.get_all_picks(bot.pool, guild_id)
     settings = await queries.get_settings(bot.pool, guild_id)
-    embed    = _build_embed(teams, picks, settings)
 
-    async for msg in channel.history(limit=50):
-        if msg.author == bot.user and msg.embeds and "Draft Pick Board" in msg.embeds[0].title:
-            await msg.edit(embed=embed)
-            return
-    await channel.send(embed=embed)
+    current_year = datetime.now().year
+    years = list(range(current_year, current_year + settings["years_ahead"]))
+
+    for year in years:
+        embed = _build_year_embed(year, teams, picks)
+        await _post_or_update_year(channel, bot.user, year, embed)
 
 
 # ── Autocomplete callbacks (module-level for reliable binding) ────────────────
-# Using module-level functions with @app_commands.autocomplete() is the most
-# reliable approach for group subcommands in Cogs. Class-method autocomplete
-# callbacks can silently fail due to binding issues, and discord.py swallows
-# those exceptions without any visible error.
 
 async def _ac_original_team(
     interaction: discord.Interaction, current: str
@@ -263,7 +263,6 @@ class Picks(commands.Cog):
         new_owner: str,
     ) -> None:
         guild_id = interaction.guild_id
-
         orig_row = await queries.get_team(self.bot.pool, guild_id, original_team)
         if not orig_row:
             await interaction.response.send_message(
@@ -329,10 +328,10 @@ class Picks(commands.Cog):
 
     # ── /pick refresh ─────────────────────────────────────────────────────────
 
-    @pick.command(name="refresh", description="Re-post the draft pick board to the configured channel.")
+    @pick.command(name="refresh", description="Re-post all year boards to the configured channel.")
     async def pick_refresh(self, interaction: discord.Interaction) -> None:
         await interaction.response.send_message(
-            "Refreshing pick board…", ephemeral=True, delete_after=REPLY_DELETE_AFTER
+            "Refreshing pick boards…", ephemeral=True, delete_after=REPLY_DELETE_AFTER
         )
         await post_pick_board(self.bot, interaction.guild_id)
 
