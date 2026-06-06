@@ -14,7 +14,7 @@ async def _init_schema(conn: asyncpg.Connection) -> None:
     await conn.execute("""
         CREATE TABLE IF NOT EXISTS guild_config (
             guild_id    BIGINT PRIMARY KEY,
-            channel_id  BIGINT,
+            channel_id  BIGINT,            -- nullable: set via /setup, may not be configured yet
             rounds      INT NOT NULL DEFAULT 5,
             years_ahead INT NOT NULL DEFAULT 3
         );
@@ -37,12 +37,14 @@ async def _init_schema(conn: asyncpg.Connection) -> None:
         );
     """)
 
-    # Migrations: add new columns to guild_config if upgrading from older schema
+    # Migrations: add new columns and relax constraints for existing installs
     await conn.execute("""
         ALTER TABLE guild_config
             ADD COLUMN IF NOT EXISTS rounds      INT NOT NULL DEFAULT 5;
         ALTER TABLE guild_config
             ADD COLUMN IF NOT EXISTS years_ahead INT NOT NULL DEFAULT 3;
+        ALTER TABLE guild_config
+            ALTER COLUMN channel_id DROP NOT NULL;
     """)
 
     # Add unique constraint to draft_picks if it doesn't already exist,
