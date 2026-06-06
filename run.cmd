@@ -29,7 +29,10 @@ for %%F in (.token.key .token.enc .db_creds.enc bot_config.ini) do (
     )
 )
 
-REM ── Start the bot (pulls latest from main on startup) ────────
+REM ── Start the bot ────────────────────────────────────────────
+REM    Set NO_PULL=1 to skip the git pull on startup (useful for
+REM    testing local changes that haven't been pushed yet).
+REM    Example:  set NO_PULL=1 && run.cmd
 echo   Starting Fantasy Hockey bot...
 echo   (Press Ctrl+C or close this window to stop)
 echo.

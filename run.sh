@@ -27,7 +27,10 @@ for secret in .token.key .token.enc .db_creds.enc bot_config.ini; do
     fi
 done
 
-# ── Start the bot (pulls latest from main on startup) ─────────
+# ── Start the bot ─────────────────────────────────────────────
+# Set NO_PULL=1 to skip the git pull on startup — useful when
+# testing local changes that haven't been pushed yet.
+# Example:  NO_PULL=1 bash run.sh
 echo "  Starting Fantasy Hockey bot..."
 echo "  (Press Ctrl+C to stop)"
 echo ""

@@ -66,9 +66,17 @@ def pull_latest() -> None:
     """
     Pull the latest code from the tracking remote branch before starting.
     Uses 'git pull' (no explicit branch) so it follows whatever branch is
-    currently checked out — main on production, development during testing.
+    currently checked out — main on production, development during local testing.
     The server only has read access; pushing is not possible.
+
+    Set the environment variable NO_PULL=1 to skip the pull entirely,
+    which is useful when testing local changes that haven't been pushed yet.
     """
+    import os
+    if os.environ.get("NO_PULL"):
+        log.info("NO_PULL is set — skipping git pull.")
+        return
+
     log.info("Pulling latest changes from remote…")
     try:
         result = subprocess.run(
