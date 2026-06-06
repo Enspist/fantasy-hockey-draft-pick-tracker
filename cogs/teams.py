@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -17,16 +19,29 @@ class Teams(commands.Cog):
     @app_commands.describe(name="Team name to add.")
     @has_admin_role()
     async def team_add(self, interaction: discord.Interaction, name: str) -> None:
+        guild_id = interaction.guild_id
         try:
-            await queries.add_team(self.bot.pool, interaction.guild_id, name)
+            team_id = await queries.add_team(self.bot.pool, guild_id, name)
         except Exception:
             await interaction.response.send_message(
                 f"A team named **{name}** already exists.", ephemeral=True
             )
             return
 
-        await interaction.response.send_message(f"Team **{name}** added.", ephemeral=True)
-        await post_pick_board(self.bot, interaction.guild_id)
+        # Auto-seed one pick per round per year using the current league settings
+        settings = await queries.get_settings(self.bot.pool, guild_id)
+        current_year = datetime.now().year
+        years = list(range(current_year, current_year + settings["years_ahead"]))
+        await queries.seed_picks_for_team(
+            self.bot.pool, guild_id, team_id, years, settings["rounds"]
+        )
+
+        await interaction.response.send_message(
+            f"Team **{name}** added with picks for rounds 1–{settings['rounds']} "
+            f"across {len(years)} year(s).",
+            ephemeral=True,
+        )
+        await post_pick_board(self.bot, guild_id)
 
     @team.command(name="rename", description="Rename an existing team.")
     @app_commands.describe(old_name="Current team name.", new_name="New team name.")

@@ -17,6 +17,32 @@ async def get_channel(pool: asyncpg.Pool, guild_id: int) -> int | None:
     return row["channel_id"] if row else None
 
 
+async def get_settings(pool: asyncpg.Pool, guild_id: int) -> dict:
+    """Return the league settings dict with defaults if not yet configured."""
+    row = await pool.fetchrow(
+        "SELECT rounds, years_ahead FROM guild_config WHERE guild_id = $1", guild_id
+    )
+    if row:
+        return {"rounds": row["rounds"], "years_ahead": row["years_ahead"]}
+    return {"rounds": 5, "years_ahead": 3}
+
+
+async def set_rounds(pool: asyncpg.Pool, guild_id: int, rounds: int) -> None:
+    await pool.execute("""
+        INSERT INTO guild_config (guild_id, rounds)
+        VALUES ($1, $2)
+        ON CONFLICT (guild_id) DO UPDATE SET rounds = $2
+    """, guild_id, rounds)
+
+
+async def set_years_ahead(pool: asyncpg.Pool, guild_id: int, years_ahead: int) -> None:
+    await pool.execute("""
+        INSERT INTO guild_config (guild_id, years_ahead)
+        VALUES ($1, $2)
+        ON CONFLICT (guild_id) DO UPDATE SET years_ahead = $2
+    """, guild_id, years_ahead)
+
+
 # ── Teams ─────────────────────────────────────────────────────────────────────
 
 async def add_team(pool: asyncpg.Pool, guild_id: int, name: str) -> int:
@@ -62,13 +88,36 @@ async def add_pick(
     original_team_id: int,
     season_year: int,
     round_num: int,
-) -> int:
-    row = await pool.fetchrow("""
+) -> None:
+    """Insert a pick. Silently skips if it already exists."""
+    await pool.execute("""
         INSERT INTO draft_picks (guild_id, original_team_id, current_team_id, season_year, round)
         VALUES ($1, $2, $2, $3, $4)
-        RETURNING id
+        ON CONFLICT ON CONSTRAINT draft_picks_unique_pick DO NOTHING
     """, guild_id, original_team_id, season_year, round_num)
-    return row["id"]
+
+
+async def seed_picks_for_team(
+    pool: asyncpg.Pool,
+    guild_id: int,
+    team_id: int,
+    years: list[int],
+    rounds: int,
+) -> None:
+    """
+    Add one pick per round per year for a team.
+    Skips any combination that already exists.
+    """
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            for year in years:
+                for r in range(1, rounds + 1):
+                    await conn.execute("""
+                        INSERT INTO draft_picks
+                            (guild_id, original_team_id, current_team_id, season_year, round)
+                        VALUES ($1, $2, $2, $3, $4)
+                        ON CONFLICT ON CONSTRAINT draft_picks_unique_pick DO NOTHING
+                    """, guild_id, team_id, year, r)
 
 
 async def trade_pick(

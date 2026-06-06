@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -17,39 +19,104 @@ def _round_label(r: int) -> str:
     return ORDINALS.get(r, f"R{r}")
 
 
-def _build_embed(teams: list, picks: list[dict]) -> discord.Embed:
+# ── Table embed builder ───────────────────────────────────────────────────────
+
+def _cell_content(team_name: str, year: int, picks: list) -> str:
+    """
+    Build the text for a single cell (team × year).
+
+    Own picks are shown as plain round numbers.
+    Picks acquired via trade are marked with *.
+    Returns '-' if the team has no picks for that year.
+    """
+    team_picks = [
+        p for p in picks
+        if p["current_team"] == team_name and p["season_year"] == year
+    ]
+    if not team_picks:
+        return "-"
+
+    parts = []
+    for p in sorted(team_picks, key=lambda x: x["round"]):
+        label = str(p["round"])
+        if p["original_team"] != p["current_team"]:
+            label += "*"
+        parts.append(label)
+    return " ".join(parts)
+
+
+def _build_table(teams: list, picks: list, settings: dict) -> str:
+    """
+    Return a monospace table string:
+
+        Team          | 2026        | 2027        | 2028
+        --------------|-------------|-------------|-------------
+        Alpha Wolves  | 1 2 3 4 5   | 1 2* 3 4 5  | 1 2 3 4 5
+        Beta Bears    | 1 2 3 4 5   | 1 2 3 4 5   | 1 2 3 4 5
+
+    * = acquired via trade
+    """
+    current_year = datetime.now().year
+    years = list(range(current_year, current_year + settings["years_ahead"]))
+    team_names = [t["name"] for t in teams]
+
+    if not team_names:
+        return "(No teams have been added yet.)"
+
+    # Pre-compute all cell values
+    cells: dict[str, dict[int, str]] = {
+        name: {year: _cell_content(name, year, picks) for year in years}
+        for name in team_names
+    }
+
+    # Column widths
+    name_col_w = max((len(n) for n in team_names), default=4)
+    name_col_w = max(name_col_w, len("Team"))
+
+    year_col_w = {
+        y: max(len(str(y)), max((len(cells[n][y]) for n in team_names), default=1))
+        for y in years
+    }
+
+    # Header row
+    header = "Team".ljust(name_col_w) + " | " + " | ".join(
+        str(y).ljust(year_col_w[y]) for y in years
+    )
+
+    # Separator
+    sep = "-" * name_col_w + "-+-" + "-+-".join(
+        "-" * year_col_w[y] for y in years
+    )
+
+    # Data rows
+    rows = [header, sep]
+    for name in team_names:
+        row = name.ljust(name_col_w) + " | " + " | ".join(
+            cells[name][y].ljust(year_col_w[y]) for y in years
+        )
+        rows.append(row)
+
+    return "\n".join(rows)
+
+
+def _build_embed(teams: list, picks: list, settings: dict) -> discord.Embed:
     embed = discord.Embed(
-        title="Fantasy Hockey Draft Pick Board",
+        title="🏒 Fantasy Hockey Draft Pick Board",
         color=discord.Color.blue(),
     )
 
-    picks_by_owner: dict[str, list] = {t["name"]: [] for t in teams}
+    table = _build_table(teams, picks, settings)
+    embed.description = f"```\n{table}\n```"
 
-    for p in picks:
-        owner = p["current_team"]
-        if owner not in picks_by_owner:
-            picks_by_owner[owner] = []
-        picks_by_owner[owner].append(p)
-
-    for team_name, team_picks in sorted(picks_by_owner.items()):
-        if not team_picks:
-            embed.add_field(name=team_name, value="*(no picks)*", inline=False)
-            continue
-
-        lines: list[str] = []
-        for p in sorted(team_picks, key=lambda x: (x["season_year"], x["round"])):
-            label = f"{p['season_year']} {_round_label(p['round'])}"
-            if p["original_team"] != p["current_team"]:
-                label += f" *(from {p['original_team']})*"
-            lines.append(f"• {label}")
-
-        embed.add_field(name=team_name, value="\n".join(lines), inline=False)
-
-    if not any(v for v in picks_by_owner.values()):
-        embed.description = "No draft picks have been entered yet."
+    if any("*" in _cell_content(t["name"], y, picks)
+           for t in teams
+           for y in range(datetime.now().year, datetime.now().year + settings["years_ahead"])):
+        embed.set_footer(text="* = acquired via trade")
 
     return embed
 
+
+# ── Board poster ──────────────────────────────────────────────────────────────
 
 async def post_pick_board(bot: commands.Bot, guild_id: int) -> None:
     channel_id = await queries.get_channel(bot.pool, guild_id)
@@ -60,18 +127,21 @@ async def post_pick_board(bot: commands.Bot, guild_id: int) -> None:
     if not isinstance(channel, discord.TextChannel):
         return
 
-    teams = await queries.list_teams(bot.pool, guild_id)
-    picks = await queries.get_all_picks(bot.pool, guild_id)
-    embed = _build_embed(teams, picks)
+    teams    = await queries.list_teams(bot.pool, guild_id)
+    picks    = await queries.get_all_picks(bot.pool, guild_id)
+    settings = await queries.get_settings(bot.pool, guild_id)
+    embed    = _build_embed(teams, picks, settings)
 
-    # Replace the most recent bot board message instead of spamming
+    # Edit the existing board message rather than posting a new one
     async for msg in channel.history(limit=50):
-        if msg.author == bot.user and msg.embeds and msg.embeds[0].title == embed.title:
+        if msg.author == bot.user and msg.embeds and "Draft Pick Board" in msg.embeds[0].title:
             await msg.edit(embed=embed)
             return
 
     await channel.send(embed=embed)
 
+
+# ── Cog ───────────────────────────────────────────────────────────────────────
 
 class Picks(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
@@ -83,7 +153,7 @@ class Picks(commands.Cog):
     @app_commands.describe(
         team="Team that originally owns this pick.",
         year="Draft year (e.g. 2026).",
-        round="Round number (1–10).",
+        round="Round number (1–20).",
     )
     @has_admin_role()
     async def pick_add(
@@ -91,7 +161,7 @@ class Picks(commands.Cog):
         interaction: discord.Interaction,
         team: str,
         year: int,
-        round: app_commands.Range[int, 1, 10],
+        round: app_commands.Range[int, 1, 20],
     ) -> None:
         team_row = await queries.get_team(self.bot.pool, interaction.guild_id, team)
         if not team_row:
@@ -108,7 +178,7 @@ class Picks(commands.Cog):
     @app_commands.describe(
         original_team="Team that originally owned the pick.",
         year="Draft year of the pick.",
-        round="Round number (1–10).",
+        round="Round number (1–20).",
         new_owner="Team receiving the pick.",
     )
     @has_admin_role()
@@ -117,7 +187,7 @@ class Picks(commands.Cog):
         interaction: discord.Interaction,
         original_team: str,
         year: int,
-        round: app_commands.Range[int, 1, 10],
+        round: app_commands.Range[int, 1, 20],
         new_owner: str,
     ) -> None:
         guild_id = interaction.guild_id
@@ -151,7 +221,7 @@ class Picks(commands.Cog):
     @app_commands.describe(
         original_team="Team that originally owned the pick.",
         year="Draft year.",
-        round="Round number (1–10).",
+        round="Round number (1–20).",
     )
     @has_admin_role()
     async def pick_remove(
@@ -159,7 +229,7 @@ class Picks(commands.Cog):
         interaction: discord.Interaction,
         original_team: str,
         year: int,
-        round: app_commands.Range[int, 1, 10],
+        round: app_commands.Range[int, 1, 20],
     ) -> None:
         orig_row = await queries.get_team(self.bot.pool, interaction.guild_id, original_team)
         if not orig_row:
@@ -180,7 +250,7 @@ class Picks(commands.Cog):
 
     @pick.command(name="refresh", description="Re-post the draft pick board to the configured channel.")
     async def pick_refresh(self, interaction: discord.Interaction) -> None:
-        await interaction.response.send_message("Refreshing pick board...", ephemeral=True)
+        await interaction.response.send_message("Refreshing pick board…", ephemeral=True)
         await post_pick_board(self.bot, interaction.guild_id)
 
 

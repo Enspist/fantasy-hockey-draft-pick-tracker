@@ -17,6 +17,7 @@ log = logging.getLogger(__name__)
 
 COGS = [
     "cogs.admin",
+    "cogs.settings",
     "cogs.teams",
     "cogs.picks",
     "cogs.season",
