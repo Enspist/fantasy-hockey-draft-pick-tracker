@@ -3,10 +3,7 @@ REM ============================================================
 REM  Fantasy Hockey Draft Pick Tracker -- Windows launcher
 REM  Usage:  Double-click run.cmd  OR  run from Command Prompt
 REM
-REM  Starts the webhook server in a separate window, then starts
-REM  the Discord bot in this window.  Close the bot window (or
-REM  press Ctrl+C) to stop the bot; the webhook window must be
-REM  closed separately.
+REM  Pulls the latest code from main, then starts the Discord bot.
 REM ============================================================
 setlocal EnableDelayedExpansion
 
@@ -32,15 +29,9 @@ for %%F in (.token.key .token.enc .db_creds.enc bot_config.ini) do (
     )
 )
 
-REM ── Start the webhook server in a separate window ────────────
-echo   Starting webhook server in a new window...
-start "Fantasy Hockey - Webhook Server" "%PYTHON_BIN%" "%SCRIPT_DIR%webhook_server.py"
-echo   [OK] Webhook server window opened.
-echo.
-
-REM ── Start the Discord bot in this window ─────────────────────
+REM ── Start the bot (pulls latest from main on startup) ────────
 echo   Starting Fantasy Hockey bot...
-echo   (Press Ctrl+C or close this window to stop the bot)
+echo   (Press Ctrl+C or close this window to stop)
 echo.
 "%PYTHON_BIN%" "%SCRIPT_DIR%main.py"
 

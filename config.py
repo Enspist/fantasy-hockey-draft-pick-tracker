@@ -2,10 +2,10 @@
 Runtime configuration loader.
 
 Sources (all created by setup.py — never committed to git):
-  bot_config.ini   — guild ID, admin role name, channel, webhook settings  (plain text, editable)
-  .token.key       — Fernet encryption key shared by token + DB creds       (chmod 600)
-  .token.enc       — encrypted Discord bot token                            (chmod 600)
-  .db_creds.enc    — encrypted pickle with DB host/port/name/user/password  (chmod 600)
+  bot_config.ini   — guild ID, admin role name, channel  (plain text, editable)
+  .token.key       — Fernet encryption key shared by token + DB creds  (chmod 600)
+  .token.enc       — encrypted Discord bot token                        (chmod 600)
+  .db_creds.enc    — encrypted pickle: DB host/port/name/user/password  (chmod 600)
 """
 
 import configparser
@@ -53,4 +53,3 @@ GUILD_ID: int       = int(_ini["bot"]["guild_id"])
 ADMIN_ROLE: str     = _ini["bot"]["admin_role"]
 PICKS_CHANNEL: int  = int(_ini["bot"]["picks_channel"])
 
-WEBHOOK_PORT: int   = int(_ini["webhook"].get("port", "5000"))

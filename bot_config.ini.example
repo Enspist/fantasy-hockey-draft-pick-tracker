@@ -7,8 +7,3 @@ admin_role = Commissioner
 
 # The Discord channel ID where the draft pick board embed is posted
 picks_channel = 987654321098765432
-
-[webhook]
-# Port the webhook listener runs on (default 5000)
-# The webhook secret is set directly in webhook_server.py by the developer.
-port = 5000

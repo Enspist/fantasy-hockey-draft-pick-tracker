@@ -8,12 +8,11 @@ Discord bot to keep track of and manage draft picks. Designed to replace the Fan
 
 ```
 install.py / install.sh / install.cmd  — first-time installer (run once)
-run.py     / run.sh     / run.cmd      — start the bot + webhook server
+run.py     / run.sh     / run.cmd      — start the bot
 setup.py                               — interactive config wizard (called by installer)
-main.py                                — Discord bot entry point
+main.py                                — Discord bot entry point (pulls latest on startup)
 config.py                              — reads bot_config.ini + decrypts secrets
 bot_config.ini.example                 — template for the plain-text config
-webhook_server.py                      — GitHub webhook listener (auto-pull on push to main)
 database/
   credentials.py               — decrypts .db_creds.enc and builds the connection URL
   connection.py                — asyncpg pool + schema init
@@ -24,18 +23,23 @@ cogs/
   teams.py                     — /team add|rename|remove|list
   picks.py                     — /pick add|trade|remove|refresh
   season.py                    — /season_prep
-fantasy-hockey-bot.service     — systemd unit for the bot (alternative to run.sh)
-webhook.service                — systemd unit for the webhook server
+fantasy-hockey-bot.service     — systemd unit for Linux (alternative to run.sh)
 ```
 
 ### Files created by setup.py (never committed)
 
 | File | Contents | Format |
 |---|---|---|
-| `bot_config.ini` | Guild ID, admin role, channel ID, webhook settings | Plain text — edit by hand to change |
+| `bot_config.ini` | Guild ID, admin role, channel ID | Plain text — edit by hand to change |
 | `.token.key` | Fernet encryption key (protects both encrypted files) | Binary, chmod 600 |
 | `.token.enc` | Encrypted Discord bot token | Fernet ciphertext, chmod 600 |
 | `.db_creds.enc` | Encrypted pickle: DB host, port, name, `FantasyBot` user + password | Encrypted pickle, chmod 600 |
+
+---
+
+## How updates work
+
+Every time the bot starts it runs `git pull origin main` before connecting to Discord, so it is always running the latest code. The server only has **read access** via a deploy key — it cannot push changes to any branch. All commits must come from an authorised developer account.
 
 ---
 
@@ -49,7 +53,7 @@ webhook.service                — systemd unit for the webhook server
 
 ## First-time setup (local or server)
 
-Clone the repo, then run the installer once.  It handles everything — venv creation, dependency install, and the interactive config wizard.
+Clone the repo, then run the installer once. It handles everything — venv creation, dependency install, and the interactive config wizard.
 
 **Linux / macOS**
 ```bash
@@ -75,10 +79,10 @@ The installer will:
 - Auto-detect PostgreSQL on `localhost:5432` / `:5433` (asks for remote host/port if not found)
 - Prompt for DB name, master username, master password → creates the DB + `FantasyBot` app user
 - Prompt for Discord bot token → encrypted in `.token.enc` / `.token.key`
-- Prompt for guild ID, admin role, channel ID, webhook secret → saved to `bot_config.ini`
+- Prompt for guild ID, admin role, channel ID → saved to `bot_config.ini`
 
-To change **guild/role/channel settings** later, open `bot_config.ini` in any text editor.  
-To update the **Discord token** or **DB password**, run `python setup.py` again.
+To change **guild/role/channel settings** later, open `bot_config.ini` in any text editor.
+To update the **Discord token** or **DB credentials**, run `python setup.py` again.
 
 ---
 
@@ -101,7 +105,8 @@ python run.py
 python run.py
 ```
 
-The run script starts the **webhook server** (background) and the **Discord bot** (foreground).  Press `Ctrl+C` to stop both cleanly.  On Windows, `run.cmd` opens the webhook server in a separate console window.
+On startup the bot pulls the latest code from `main`, then connects to Discord.
+Press `Ctrl+C` to stop.
 
 ---
 
@@ -110,49 +115,24 @@ The run script starts the **webhook server** (background) and the **Discord bot*
 ```bash
 # Clone directly onto the server
 sudo mkdir -p /opt/fantasy-hockey-bot
-cd /opt/fantasy-hockey-bot
-sudo git clone https://github.com/Enspist/fantasy-hockey-draft-pick-tracker.git .
+sudo git clone https://github.com/Enspist/fantasy-hockey-draft-pick-tracker.git /opt/fantasy-hockey-bot
 
 # Create a dedicated low-privilege user
 sudo useradd -r -s /bin/false discord
 sudo chown -R discord:discord /opt/fantasy-hockey-bot
 
-# Set up virtualenv
-sudo -u discord python3 -m venv venv
-sudo -u discord venv/bin/pip install -r requirements.txt
+# Run the installer as the service user
+cd /opt/fantasy-hockey-bot
+sudo -u discord bash install.sh
 
-# Run the setup wizard as the service user
-sudo -u discord venv/bin/python setup.py
-
-# Install and start both services
+# Install and start the service
 sudo cp fantasy-hockey-bot.service /etc/systemd/system/
-sudo cp webhook.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now fantasy-hockey-bot
-sudo systemctl enable --now fantasy-hockey-bot-webhook
 
 # View logs
 sudo journalctl -u fantasy-hockey-bot -f
-sudo journalctl -u fantasy-hockey-bot-webhook -f
 ```
-
----
-
-## GitHub auto-pull (webhook server)
-
-When you push to `main`, GitHub calls `http://<server>:<port>/webhook` and the
-`webhook_server.py` process verifies the signature and runs `git pull origin main`.
-
-**GitHub setup:**
-1. Go to your repo → **Settings → Webhooks → Add webhook**
-2. **Payload URL**: `http://<your-server-ip>:5000/webhook`
-3. **Content type**: `application/json`
-4. **Secret**: the `webhook_secret` you entered during `python setup.py`
-5. **Events**: Just the push event
-
-> **Note:** If your server is behind a firewall, open the webhook port (default 5000)
-> for inbound connections, or use a reverse proxy (nginx) to forward a public HTTPS
-> endpoint to the Flask server.
 
 ---
 

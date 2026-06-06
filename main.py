@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import subprocess
+from pathlib import Path
 
 import discord
 from discord.ext import commands
@@ -19,6 +21,30 @@ COGS = [
     "cogs.picks",
     "cogs.season",
 ]
+
+REPO_DIR = Path(__file__).parent.resolve()
+
+
+def pull_latest() -> None:
+    """
+    Pull the latest code from main before the bot starts.
+    The server only has read (pull) access — pushing is not possible.
+    """
+    log.info("Pulling latest changes from origin/main…")
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(REPO_DIR), "pull", "origin", "main"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        output = (result.stdout + result.stderr).strip()
+        if result.returncode == 0:
+            log.info("git pull: %s", output)
+        else:
+            log.warning("git pull exited with code %d: %s", result.returncode, output)
+    except Exception as exc:
+        log.warning("git pull failed: %s", exc)
 
 
 class FantasyHockeyBot(commands.Bot):
@@ -48,6 +74,7 @@ class FantasyHockeyBot(commands.Bot):
 
 
 async def main() -> None:
+    pull_latest()
     bot = FantasyHockeyBot()
     async with bot:
         await bot.start(config.DISCORD_TOKEN)

@@ -3,9 +3,7 @@
 #  Fantasy Hockey Draft Pick Tracker — Linux/macOS launcher
 #  Usage:  bash run.sh
 #
-#  Starts the webhook auto-pull server in the background, then
-#  starts the Discord bot in the foreground.  Both processes are
-#  stopped cleanly when you press Ctrl+C or the bot exits.
+#  Pulls the latest code from main, then starts the Discord bot.
 # ============================================================
 set -euo pipefail
 
@@ -29,30 +27,8 @@ for secret in .token.key .token.enc .db_creds.enc bot_config.ini; do
     fi
 done
 
-# ── Trap Ctrl+C / EXIT so we clean up the webhook process ────
-WEBHOOK_PID=""
-
-cleanup() {
-    echo ""
-    echo "  Shutting down…"
-    if [ -n "$WEBHOOK_PID" ] && kill -0 "$WEBHOOK_PID" 2>/dev/null; then
-        kill "$WEBHOOK_PID"
-        wait "$WEBHOOK_PID" 2>/dev/null || true
-        echo "  ✓ Webhook server stopped."
-    fi
-    echo "  ✓ Done."
-}
-trap cleanup EXIT INT TERM
-
-# ── Start the webhook server in the background ───────────────
-echo "  Starting webhook server…"
-"$PYTHON_BIN" "$SCRIPT_DIR/webhook_server.py" &
-WEBHOOK_PID=$!
-echo "  ✓ Webhook server running (PID $WEBHOOK_PID)"
-echo ""
-
-# ── Start the Discord bot in the foreground ──────────────────
-echo "  Starting Fantasy Hockey bot…"
-echo "  (Press Ctrl+C to stop both processes)"
+# ── Start the bot (pulls latest from main on startup) ─────────
+echo "  Starting Fantasy Hockey bot..."
+echo "  (Press Ctrl+C to stop)"
 echo ""
 "$PYTHON_BIN" "$SCRIPT_DIR/main.py"

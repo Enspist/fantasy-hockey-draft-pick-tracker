@@ -241,18 +241,12 @@ def _encrypt_token(key: bytes, token: str) -> None:
     print(f"  ✓ Token encrypted → {TOKEN_ENC_FILE}")
 
 
-def _write_config(
-    guild_id: str, admin_role: str, picks_channel: str,
-    webhook_port: str,
-) -> None:
+def _write_config(guild_id: str, admin_role: str, picks_channel: str) -> None:
     cfg = configparser.ConfigParser()
     cfg["bot"] = {
         "guild_id":      guild_id,
         "admin_role":    admin_role,
         "picks_channel": picks_channel,
-    }
-    cfg["webhook"] = {
-        "port": webhook_port,
     }
     with CONFIG_FILE.open("w") as fh:
         cfg.write(fh)
@@ -293,18 +287,12 @@ def main() -> None:
     picks_channel = _prompt("  Picks board channel ID")
     print()
 
-    # ── 4. GitHub webhook ──────────────────────────────────────────
-    print("── GitHub webhook settings ─────────────────────────────────")
-    print("  (The webhook secret is set in webhook_server.py by the developer.)")
-    webhook_port = _prompt("  Webhook listener port", default="5000")
-    print()
-
     # ── 5. Persist everything ──────────────────────────────────────
     print("── Saving configuration ────────────────────────────────────")
     fernet_key = _load_or_create_fernet_key()
     _save_db_creds(fernet_key, host, port, dbname)
     _encrypt_token(fernet_key, token)
-    _write_config(guild_id, admin_role, picks_channel, webhook_port)
+    _write_config(guild_id, admin_role, picks_channel)
 
     print()
     print("=" * 60)
