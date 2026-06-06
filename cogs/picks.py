@@ -23,10 +23,11 @@ def _round_label(r: int) -> str:
 
 def _cell_content(team_name: str, year: int, picks: list) -> str:
     """
-    Build the text for a single cell (team × year).
+    Build the text for a single cell (team × year) using range compression.
 
-    Own picks are shown as plain round numbers.
-    Picks acquired via trade are marked with *.
+    Consecutive own-picks collapse into a range:     1 2 3 4 5  →  1-5
+    Traded picks show the original owner in parens:  R3 from Alpha  →  3(Alpha)
+    Traded picks break ranges:  own 1,2 | traded 3 from Alpha | own 4,5  →  1-2 3(Alpha) 4-5
     Returns '-' if the team has no picks for that year.
     """
     team_picks = [
@@ -36,13 +37,33 @@ def _cell_content(team_name: str, year: int, picks: list) -> str:
     if not team_picks:
         return "-"
 
-    parts = []
-    for p in sorted(team_picks, key=lambda x: x["round"]):
-        label = str(p["round"])
-        if p["original_team"] != p["current_team"]:
-            label += "*"
-        parts.append(label)
-    return " ".join(parts)
+    # List of (round, original_team_name) sorted by round
+    items = sorted(
+        [(p["round"], p["original_team"]) for p in team_picks],
+        key=lambda x: x[0],
+    )
+
+    groups: list[str] = []
+    i = 0
+    while i < len(items):
+        r, orig = items[i]
+        is_traded = orig != team_name
+        if is_traded:
+            # Show round number and original owner — never merged into a range
+            groups.append(f"{r}({orig})")
+            i += 1
+        else:
+            # Extend a consecutive run of own-picks
+            start = r
+            end = r
+            j = i + 1
+            while j < len(items) and items[j][1] == team_name and items[j][0] == end + 1:
+                end = items[j][0]
+                j += 1
+            groups.append(f"{start}-{end}" if end > start else str(start))
+            i = j
+
+    return " ".join(groups)
 
 
 def _build_table(teams: list, picks: list, settings: dict) -> str:
@@ -108,10 +129,6 @@ def _build_embed(teams: list, picks: list, settings: dict) -> discord.Embed:
     table = _build_table(teams, picks, settings)
     embed.description = f"```\n{table}\n```"
 
-    if any("*" in _cell_content(t["name"], y, picks)
-           for t in teams
-           for y in range(datetime.now().year, datetime.now().year + settings["years_ahead"])):
-        embed.set_footer(text="* = acquired via trade")
 
     return embed
 
