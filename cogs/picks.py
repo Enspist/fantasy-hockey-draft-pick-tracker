@@ -66,7 +66,13 @@ def _cell_content(team_name: str, year: int, picks: list) -> str:
 
 
 def _build_year_embed(year: int, teams: list, picks: list) -> discord.Embed:
-    """Build the embed for a single year — two columns: Team | Picks."""
+    """
+    Build the embed for a single year using two inline fields (Team | Picks).
+
+    Inline fields are rendered side-by-side by Discord on all screen sizes,
+    so 'Team' and 'Picks' always appear on the same line regardless of how
+    narrow the embed is — no code-block wrapping issues.
+    """
     embed = discord.Embed(
         title=_year_embed_title(year),
         color=discord.Color.blue(),
@@ -77,19 +83,12 @@ def _build_year_embed(year: int, teams: list, picks: list) -> discord.Embed:
         embed.description = "*(No teams have been added yet.)*"
         return embed
 
-    year_cells = {name: _cell_content(name, year, picks) for name in team_names}
+    team_col  = "\n".join(team_names)
+    picks_col = "\n".join(_cell_content(name, year, picks) for name in team_names)
 
-    name_col_w  = max(max(len(n) for n in team_names), len("Team"))
-    picks_col_w = max(max(len(v) for v in year_cells.values()), len("Picks"))
+    embed.add_field(name="Team",  value=team_col,  inline=True)
+    embed.add_field(name="Picks", value=picks_col, inline=True)
 
-    header = "Team".ljust(name_col_w) + " | " + "Picks"
-    sep    = "-" * name_col_w + "-+-" + "-" * picks_col_w
-
-    rows = [header, sep]
-    for name in team_names:
-        rows.append(name.ljust(name_col_w) + " | " + year_cells[name])
-
-    embed.description = "```\n" + "\n".join(rows) + "\n```"
     return embed
 
 
