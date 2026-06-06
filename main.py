@@ -109,6 +109,9 @@ class FantasyHockeyBot(commands.Bot):
             log.info("Loaded cog: %s", cog)
 
         guild = discord.Object(id=config.GUILD_ID)
+        # Clear any stale guild-specific commands before re-syncing so Discord
+        # receives a clean payload that includes all autocomplete metadata.
+        self.tree.clear_commands(guild=guild)
         self.tree.copy_global_to(guild=guild)
         await self.tree.sync(guild=guild)
         log.info("Slash commands synced to guild %s.", config.GUILD_ID)

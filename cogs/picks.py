@@ -325,3 +325,27 @@ class Picks(commands.Cog):
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Picks(bot))
+
+    # Attach autocomplete callbacks directly to the Command objects that are
+    # now live in the tree.  The Cog metaclass copies commands during injection
+    # and does not reliably carry over _autocomplete_callbacks set by the
+    # @app_commands.autocomplete() class-body decorator, so we register them
+    # here — after add_cog() — on the actual objects Discord will sync.
+    import logging
+    log = logging.getLogger(__name__)
+
+    pick_group = bot.tree.get_command("pick")
+    if pick_group is None:
+        log.error("Autocomplete setup: 'pick' group not found in tree.")
+        return
+
+    trade_cmd = pick_group.get_command("trade")
+    if trade_cmd is None:
+        log.error("Autocomplete setup: 'pick trade' command not found in tree.")
+        return
+
+    trade_cmd.autocomplete("original_team")(_ac_original_team)
+    trade_cmd.autocomplete("year")(_ac_year)
+    trade_cmd.autocomplete("round")(_ac_round)
+    trade_cmd.autocomplete("new_owner")(_ac_new_owner)
+    log.info("Autocomplete callbacks registered on 'pick trade'.")
