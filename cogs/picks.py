@@ -172,9 +172,9 @@ class Picks(commands.Cog):
 
     @pick.command(name="trade", description="Record a draft pick trade between two teams.")
     @app_commands.describe(
-        original_team="Team that originally owned the pick.",
-        year="Draft year of the pick.",
-        round="Round of the pick.",
+        original_team="Team the pick originated from (shown in brackets on the board, e.g. '3(Alpha)').",
+        year="Draft year of the pick — options appear after selecting a team.",
+        round="Round number — options appear after selecting a team and year.",
         new_owner="Team receiving the pick.",
     )
     @has_admin_role()
@@ -213,69 +213,72 @@ class Picks(commands.Cog):
         )
         await post_pick_board(self.bot, interaction.guild_id)
 
-    # Autocomplete: original_team — all teams in the guild
+    # ── Autocomplete callbacks for /pick trade ────────────────────────────────
+    # NOTE: use interaction.client rather than self.bot — autocomplete callbacks
+    # on class-variable groups can silently fail if self binding is incomplete,
+    # and discord.py swallows those exceptions without showing an error.
+
     @pick_trade.autocomplete("original_team")
     async def _ac_original_team(
         self, interaction: discord.Interaction, current: str
     ) -> list[app_commands.Choice[str]]:
-        teams = await queries.list_teams(self.bot.pool, interaction.guild_id)
+        pool  = interaction.client.pool
+        teams = await queries.list_teams(pool, interaction.guild_id)
         return [
             app_commands.Choice(name=t["name"], value=t["name"])
             for t in teams
             if current.lower() in t["name"].lower()
         ][:25]
 
-    # Autocomplete: year — years that have picks for the chosen original_team
     @pick_trade.autocomplete("year")
     async def _ac_year(
         self, interaction: discord.Interaction, current: str
     ) -> list[app_commands.Choice[int]]:
+        pool      = interaction.client.pool
         team_name = interaction.namespace.original_team
         if not team_name:
             return []
-        team = await queries.get_team(self.bot.pool, interaction.guild_id, team_name)
+        team = await queries.get_team(pool, interaction.guild_id, team_name)
         if not team:
             return []
-        years = await queries.get_pick_years_for_team(
-            self.bot.pool, interaction.guild_id, team["id"]
-        )
+        years = await queries.get_pick_years_for_team(pool, interaction.guild_id, team["id"])
         return [
             app_commands.Choice(name=str(y), value=y)
             for y in years
             if not current or current in str(y)
         ][:25]
 
-    # Autocomplete: round — rounds that exist for chosen original_team + year
     @pick_trade.autocomplete("round")
     async def _ac_round(
         self, interaction: discord.Interaction, current: str
     ) -> list[app_commands.Choice[int]]:
+        pool      = interaction.client.pool
         team_name = interaction.namespace.original_team
         raw_year  = interaction.namespace.year
-        if not team_name or not raw_year:
+        if not team_name or raw_year is None:
             return []
         try:
             year = int(raw_year)
         except (TypeError, ValueError):
             return []
-        team = await queries.get_team(self.bot.pool, interaction.guild_id, team_name)
+        team = await queries.get_team(pool, interaction.guild_id, team_name)
         if not team:
             return []
         rounds = await queries.get_pick_rounds_for_team_year(
-            self.bot.pool, interaction.guild_id, team["id"], year
+            pool, interaction.guild_id, team["id"], year
         )
         return [
-            app_commands.Choice(name=_round_label(r), value=r)
+            app_commands.Choice(name=f"{_round_label(r)} round", value=r)
             for r in rounds
             if not current or current in str(r)
         ][:25]
 
-    # Autocomplete: new_owner — all teams except the original_team
     @pick_trade.autocomplete("new_owner")
     async def _ac_new_owner(
         self, interaction: discord.Interaction, current: str
     ) -> list[app_commands.Choice[str]]:
-        teams = await queries.list_teams(self.bot.pool, interaction.guild_id)
+        pool     = interaction.client.pool
+        teams    = await queries.list_teams(pool, interaction.guild_id)
         original = interaction.namespace.original_team or ""
         return [
             app_commands.Choice(name=t["name"], value=t["name"])
