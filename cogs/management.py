@@ -9,11 +9,11 @@ class Management(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    bot_group = app_commands.Group(name="bot", description="Bot management commands.")
+    mgmt = app_commands.Group(name="bot", description="Bot management commands.")
 
-    @bot_group.command(name="restart", description="Restart the bot without closing the terminal.")
+    @mgmt.command(name="restart", description="Restart the bot without closing the terminal.")
     @has_admin_role()
-    async def bot_restart(self, interaction: discord.Interaction) -> None:
+    async def mgmt_restart(self, interaction: discord.Interaction) -> None:
         await interaction.response.send_message("Restarting bot…", ephemeral=True)
         self.bot.request_restart()
 
