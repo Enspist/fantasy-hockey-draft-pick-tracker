@@ -20,10 +20,9 @@ def _round_label(r: int) -> str:
     return ORDINALS.get(r, f"{r}th")
 
 
-# ── Per-year embed builder ────────────────────────────────────────────────────
+# ── Board embed builder ───────────────────────────────────────────────────────
 
-def _year_embed_title(year: int) -> str:
-    return f"🏒 {year} Draft Picks"
+BOARD_TITLE = "🏒 Fantasy Hockey Draft Pick Board"
 
 
 def _cell_content(team_name: str, year: int, picks: list) -> str:
@@ -65,55 +64,43 @@ def _cell_content(team_name: str, year: int, picks: list) -> str:
     return " ".join(groups)
 
 
-def _build_year_embed(year: int, teams: list, picks: list) -> discord.Embed:
+def _build_board_embed(teams: list, picks: list, settings: dict) -> discord.Embed:
     """
-    Build the embed for a single year using two inline fields (Team | Picks).
+    Single embed, one inline field per column:
+      Team | 2026 | 2027 | 2028 …
 
-    Inline fields are rendered side-by-side by Discord on all screen sizes,
-    so 'Team' and 'Picks' always appear on the same line regardless of how
-    narrow the embed is — no code-block wrapping issues.
+    Discord renders up to 3 inline fields per row, so:
+      • 1–2 years  → Team + years all in one row
+      • 3+ years   → wraps to additional rows (Team column repeats
+                     automatically via Discord's field layout)
+
+    Each field is a newline-separated list so rows stay aligned.
     """
-    embed = discord.Embed(
-        title=_year_embed_title(year),
-        color=discord.Color.blue(),
-    )
+    embed = discord.Embed(title=BOARD_TITLE, color=discord.Color.blue())
 
-    team_names = [t["name"] for t in teams]
+    current_year = datetime.now().year
+    years        = list(range(current_year, current_year + settings["years_ahead"]))
+    team_names   = [t["name"] for t in teams]
+
     if not team_names:
         embed.description = "*(No teams have been added yet.)*"
         return embed
 
-    team_col  = "\n".join(team_names)
-    picks_col = "\n".join(_cell_content(name, year, picks) for name in team_names)
+    # Team name column — always first
+    embed.add_field(name="Team", value="\n".join(team_names), inline=True)
 
-    embed.add_field(name="Team",  value=team_col,  inline=True)
-    embed.add_field(name="Picks", value=picks_col, inline=True)
+    # One inline field per year
+    for year in years:
+        col = "\n".join(_cell_content(name, year, picks) for name in team_names)
+        embed.add_field(name=str(year), value=col, inline=True)
 
     return embed
 
 
 # ── Board poster ──────────────────────────────────────────────────────────────
 
-async def _post_or_update_year(
-    channel: discord.TextChannel,
-    bot_user: discord.ClientUser,
-    year: int,
-    embed: discord.Embed,
-) -> None:
-    """Edit the existing year embed if found; otherwise post a new message."""
-    title = _year_embed_title(year)
-    async for msg in channel.history(limit=200):
-        if msg.author == bot_user and msg.embeds and msg.embeds[0].title == title:
-            await msg.edit(embed=embed)
-            return
-    await channel.send(embed=embed)
-
-
 async def post_pick_board(bot: commands.Bot, guild_id: int) -> None:
-    """
-    Post or update one embed per tracked year in the configured channel.
-    Years are processed in ascending order so new posts appear chronologically.
-    """
+    """Post or update the single board embed in the configured channel."""
     channel_id = await queries.get_channel(bot.pool, guild_id)
     if not channel_id:
         return
@@ -124,13 +111,14 @@ async def post_pick_board(bot: commands.Bot, guild_id: int) -> None:
     teams    = await queries.list_teams(bot.pool, guild_id)
     picks    = await queries.get_all_picks(bot.pool, guild_id)
     settings = await queries.get_settings(bot.pool, guild_id)
+    embed    = _build_board_embed(teams, picks, settings)
 
-    current_year = datetime.now().year
-    years = list(range(current_year, current_year + settings["years_ahead"]))
-
-    for year in years:
-        embed = _build_year_embed(year, teams, picks)
-        await _post_or_update_year(channel, bot.user, year, embed)
+    # Edit the existing board message in place; post a new one if not found
+    async for msg in channel.history(limit=50):
+        if msg.author == bot.user and msg.embeds and msg.embeds[0].title == BOARD_TITLE:
+            await msg.edit(embed=embed)
+            return
+    await channel.send(embed=embed)
 
 
 # ── Autocomplete callbacks (module-level for reliable binding) ────────────────
