@@ -2,6 +2,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from config import REPLY_DELETE_AFTER
 from database import queries
 from cogs.checks import has_admin_role
 from cogs.picks import _round_label
@@ -19,7 +20,7 @@ class Season(commands.Cog):
     @has_admin_role()
     async def season_prep(self, interaction: discord.Interaction, year: int) -> None:
         guild_id = interaction.guild_id
-        traded = await queries.get_traded_picks(self.bot.pool, guild_id)
+        traded   = await queries.get_traded_picks(self.bot.pool, guild_id)
         season_picks = [p for p in traded if p["season_year"] == year]
 
         embed = discord.Embed(
@@ -38,12 +39,10 @@ class Season(commands.Cog):
                 inline=False,
             )
         else:
-            lines = []
-            for p in sorted(season_picks, key=lambda x: x["round"]):
-                round_label = _round_label(p["round"])
-                lines.append(
-                    f"• Move **{p['original_team']}**'s {year} {round_label} pick → **{p['current_team']}**"
-                )
+            lines = [
+                f"• Move **{p['original_team']}**'s {year} {_round_label(p['round'])} pick → **{p['current_team']}**"
+                for p in sorted(season_picks, key=lambda x: x["round"])
+            ]
             embed.add_field(name="Required transfers", value="\n".join(lines), inline=False)
 
         embed.set_footer(text="Check off each transfer as you complete it.")
@@ -54,7 +53,8 @@ class Season(commands.Cog):
             if isinstance(channel, discord.TextChannel):
                 await channel.send(embed=embed)
                 await interaction.response.send_message(
-                    f"Season prep checklist posted to {channel.mention}.", ephemeral=True
+                    f"Season prep checklist posted to {channel.mention}.",
+                    ephemeral=True, delete_after=REPLY_DELETE_AFTER,
                 )
                 return
 

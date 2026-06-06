@@ -5,6 +5,9 @@ __pycache__/
 venv/
 .venv/
 
+# Log files
+logs/
+
 # Secret / generated files — NEVER commit these
 .token.key
 .token.enc

@@ -52,4 +52,8 @@ DATABASE_URL: str   = build_database_url()
 GUILD_ID: int       = int(_ini["bot"]["guild_id"])
 ADMIN_ROLE: str     = _ini["bot"]["admin_role"]
 PICKS_CHANNEL: int  = int(_ini["bot"]["picks_channel"])
+LOG_KEEP: int       = int(_ini["bot"].get("log_keep", "5"))
+
+# How long (seconds) before ephemeral admin-command replies auto-delete
+REPLY_DELETE_AFTER: int = 300
 

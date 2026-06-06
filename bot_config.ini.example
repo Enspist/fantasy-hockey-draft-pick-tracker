@@ -7,3 +7,6 @@ admin_role = Commissioner
 
 # The Discord channel ID where the draft pick board embed is posted
 picks_channel = 987654321098765432
+
+# How many bot log files to keep before the oldest is deleted (default 5)
+log_keep = 5

@@ -2,6 +2,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from config import REPLY_DELETE_AFTER
 from database import queries
 from cogs.checks import has_admin_role
 
@@ -16,7 +17,8 @@ class Admin(commands.Cog):
     async def setup(self, interaction: discord.Interaction, channel: discord.TextChannel) -> None:
         await queries.set_channel(self.bot.pool, interaction.guild_id, channel.id)
         await interaction.response.send_message(
-            f"Draft pick board will be posted in {channel.mention}.", ephemeral=True
+            f"Draft pick board will be posted in {channel.mention}.",
+            ephemeral=True, delete_after=REPLY_DELETE_AFTER,
         )
 
 

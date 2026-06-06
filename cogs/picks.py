@@ -6,6 +6,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from config import REPLY_DELETE_AFTER
 from database import queries
 from cogs.checks import has_admin_role
 
@@ -25,9 +26,9 @@ def _cell_content(team_name: str, year: int, picks: list) -> str:
     """
     Build the text for a single cell (team × year) using range compression.
 
-    Consecutive own-picks collapse into a range:     1 2 3 4 5  →  1-5
-    Traded picks show the original owner in parens:  R3 from Alpha  →  3(Alpha)
-    Traded picks break ranges:  own 1,2 | traded 3 | own 4,5  →  1-2 3(Alpha) 4-5
+    Consecutive own-picks collapse into a range (1 2 3 4 5 → 1-5).
+    Traded picks show the original owner in parens and break ranges
+    (own 1,2 | traded R3 from Alpha | own 4,5 → 1-2 3(Alpha) 4-5).
     Returns '-' if the team has no picks for that year.
     """
     team_picks = [
@@ -46,17 +47,16 @@ def _cell_content(team_name: str, year: int, picks: list) -> str:
     i = 0
     while i < len(items):
         r, orig = items[i]
-        is_traded = orig != team_name
-        if is_traded:
+        if orig != team_name:
             groups.append(f"{r}({orig})")
             i += 1
         else:
             start = r
-            end = r
-            j = i + 1
+            end   = r
+            j     = i + 1
             while j < len(items) and items[j][1] == team_name and items[j][0] == end + 1:
                 end = items[j][0]
-                j += 1
+                j  += 1
             groups.append(f"{start}-{end}" if end > start else str(start))
             i = j
 
@@ -65,8 +65,8 @@ def _cell_content(team_name: str, year: int, picks: list) -> str:
 
 def _build_table(teams: list, picks: list, settings: dict) -> str:
     current_year = datetime.now().year
-    years = list(range(current_year, current_year + settings["years_ahead"]))
-    team_names = [t["name"] for t in teams]
+    years        = list(range(current_year, current_year + settings["years_ahead"]))
+    team_names   = [t["name"] for t in teams]
 
     if not team_names:
         return "(No teams have been added yet.)"
@@ -104,8 +104,7 @@ def _build_embed(teams: list, picks: list, settings: dict) -> discord.Embed:
         title="🏒 Fantasy Hockey Draft Pick Board",
         color=discord.Color.blue(),
     )
-    table = _build_table(teams, picks, settings)
-    embed.description = f"```\n{table}\n```"
+    embed.description = f"```\n{_build_table(teams, picks, settings)}\n```"
     return embed
 
 
@@ -115,7 +114,6 @@ async def post_pick_board(bot: commands.Bot, guild_id: int) -> None:
     channel_id = await queries.get_channel(bot.pool, guild_id)
     if not channel_id:
         return
-
     channel = bot.get_channel(channel_id)
     if not isinstance(channel, discord.TextChannel):
         return
@@ -129,8 +127,78 @@ async def post_pick_board(bot: commands.Bot, guild_id: int) -> None:
         if msg.author == bot.user and msg.embeds and "Draft Pick Board" in msg.embeds[0].title:
             await msg.edit(embed=embed)
             return
-
     await channel.send(embed=embed)
+
+
+# ── Autocomplete callbacks (module-level for reliable binding) ────────────────
+# Using module-level functions with @app_commands.autocomplete() is the most
+# reliable approach for group subcommands in Cogs. Class-method autocomplete
+# callbacks can silently fail due to binding issues, and discord.py swallows
+# those exceptions without any visible error.
+
+async def _ac_original_team(
+    interaction: discord.Interaction, current: str
+) -> list[app_commands.Choice[str]]:
+    teams = await queries.list_teams(interaction.client.pool, interaction.guild_id)
+    return [
+        app_commands.Choice(name=t["name"], value=t["name"])
+        for t in teams
+        if current.lower() in t["name"].lower()
+    ][:25]
+
+
+async def _ac_year(
+    interaction: discord.Interaction, current: str
+) -> list[app_commands.Choice[int]]:
+    pool      = interaction.client.pool
+    team_name = interaction.namespace.original_team
+    if not team_name:
+        return []
+    team = await queries.get_team(pool, interaction.guild_id, team_name)
+    if not team:
+        return []
+    years = await queries.get_pick_years_for_team(pool, interaction.guild_id, team["id"])
+    return [
+        app_commands.Choice(name=str(y), value=y)
+        for y in years
+        if not current or current in str(y)
+    ][:25]
+
+
+async def _ac_round(
+    interaction: discord.Interaction, current: str
+) -> list[app_commands.Choice[int]]:
+    pool      = interaction.client.pool
+    team_name = interaction.namespace.original_team
+    raw_year  = interaction.namespace.year
+    if not team_name or raw_year is None:
+        return []
+    try:
+        year = int(raw_year)
+    except (TypeError, ValueError):
+        return []
+    team = await queries.get_team(pool, interaction.guild_id, team_name)
+    if not team:
+        return []
+    rounds = await queries.get_pick_rounds_for_team_year(pool, interaction.guild_id, team["id"], year)
+    return [
+        app_commands.Choice(name=f"{_round_label(r)} round", value=r)
+        for r in rounds
+        if not current or current in str(r)
+    ][:25]
+
+
+async def _ac_new_owner(
+    interaction: discord.Interaction, current: str
+) -> list[app_commands.Choice[str]]:
+    pool     = interaction.client.pool
+    teams    = await queries.list_teams(pool, interaction.guild_id)
+    original = interaction.namespace.original_team or ""
+    return [
+        app_commands.Choice(name=t["name"], value=t["name"])
+        for t in teams
+        if t["name"] != original and current.lower() in t["name"].lower()
+    ][:25]
 
 
 # ── Cog ───────────────────────────────────────────────────────────────────────
@@ -159,12 +227,14 @@ class Picks(commands.Cog):
     ) -> None:
         team_row = await queries.get_team(self.bot.pool, interaction.guild_id, team)
         if not team_row:
-            await interaction.response.send_message(f"Team **{team}** not found.", ephemeral=True)
+            await interaction.response.send_message(
+                f"Team **{team}** not found.", ephemeral=True, delete_after=REPLY_DELETE_AFTER
+            )
             return
-
         await queries.add_pick(self.bot.pool, interaction.guild_id, team_row["id"], year, round)
         await interaction.response.send_message(
-            f"Added {year} {_round_label(round)} round pick for **{team}**.", ephemeral=True
+            f"Added {year} {_round_label(round)} round pick for **{team}**.",
+            ephemeral=True, delete_after=REPLY_DELETE_AFTER,
         )
         await post_pick_board(self.bot, interaction.guild_id)
 
@@ -173,9 +243,15 @@ class Picks(commands.Cog):
     @pick.command(name="trade", description="Record a draft pick trade between two teams.")
     @app_commands.describe(
         original_team="Team the pick originated from (shown in brackets on the board, e.g. '3(Alpha)').",
-        year="Draft year of the pick — options appear after selecting a team.",
-        round="Round number — options appear after selecting a team and year.",
+        year="Draft year — options populate after selecting a team.",
+        round="Round — options populate after selecting a team and year.",
         new_owner="Team receiving the pick.",
+    )
+    @app_commands.autocomplete(
+        original_team=_ac_original_team,
+        year=_ac_year,
+        round=_ac_round,
+        new_owner=_ac_new_owner,
     )
     @has_admin_role()
     async def pick_trade(
@@ -190,101 +266,30 @@ class Picks(commands.Cog):
 
         orig_row = await queries.get_team(self.bot.pool, guild_id, original_team)
         if not orig_row:
-            await interaction.response.send_message(f"Team **{original_team}** not found.", ephemeral=True)
+            await interaction.response.send_message(
+                f"Team **{original_team}** not found.", ephemeral=True, delete_after=REPLY_DELETE_AFTER
+            )
             return
-
         new_row = await queries.get_team(self.bot.pool, guild_id, new_owner)
         if not new_row:
-            await interaction.response.send_message(f"Team **{new_owner}** not found.", ephemeral=True)
+            await interaction.response.send_message(
+                f"Team **{new_owner}** not found.", ephemeral=True, delete_after=REPLY_DELETE_AFTER
+            )
             return
-
         updated = await queries.trade_pick(
             self.bot.pool, guild_id, orig_row["id"], year, round, new_row["id"]
         )
         if not updated:
             await interaction.response.send_message(
-                f"Could not find that pick or it already belongs to **{new_owner}**.", ephemeral=True
+                f"Could not find that pick or it already belongs to **{new_owner}**.",
+                ephemeral=True, delete_after=REPLY_DELETE_AFTER,
             )
             return
-
         await interaction.response.send_message(
             f"Traded {year} {_round_label(round)} pick (originally **{original_team}**) → **{new_owner}**.",
-            ephemeral=True,
+            ephemeral=True, delete_after=REPLY_DELETE_AFTER,
         )
         await post_pick_board(self.bot, interaction.guild_id)
-
-    # ── Autocomplete callbacks for /pick trade ────────────────────────────────
-    # NOTE: use interaction.client rather than self.bot — autocomplete callbacks
-    # on class-variable groups can silently fail if self binding is incomplete,
-    # and discord.py swallows those exceptions without showing an error.
-
-    @pick_trade.autocomplete("original_team")
-    async def _ac_original_team(
-        self, interaction: discord.Interaction, current: str
-    ) -> list[app_commands.Choice[str]]:
-        pool  = interaction.client.pool
-        teams = await queries.list_teams(pool, interaction.guild_id)
-        return [
-            app_commands.Choice(name=t["name"], value=t["name"])
-            for t in teams
-            if current.lower() in t["name"].lower()
-        ][:25]
-
-    @pick_trade.autocomplete("year")
-    async def _ac_year(
-        self, interaction: discord.Interaction, current: str
-    ) -> list[app_commands.Choice[int]]:
-        pool      = interaction.client.pool
-        team_name = interaction.namespace.original_team
-        if not team_name:
-            return []
-        team = await queries.get_team(pool, interaction.guild_id, team_name)
-        if not team:
-            return []
-        years = await queries.get_pick_years_for_team(pool, interaction.guild_id, team["id"])
-        return [
-            app_commands.Choice(name=str(y), value=y)
-            for y in years
-            if not current or current in str(y)
-        ][:25]
-
-    @pick_trade.autocomplete("round")
-    async def _ac_round(
-        self, interaction: discord.Interaction, current: str
-    ) -> list[app_commands.Choice[int]]:
-        pool      = interaction.client.pool
-        team_name = interaction.namespace.original_team
-        raw_year  = interaction.namespace.year
-        if not team_name or raw_year is None:
-            return []
-        try:
-            year = int(raw_year)
-        except (TypeError, ValueError):
-            return []
-        team = await queries.get_team(pool, interaction.guild_id, team_name)
-        if not team:
-            return []
-        rounds = await queries.get_pick_rounds_for_team_year(
-            pool, interaction.guild_id, team["id"], year
-        )
-        return [
-            app_commands.Choice(name=f"{_round_label(r)} round", value=r)
-            for r in rounds
-            if not current or current in str(r)
-        ][:25]
-
-    @pick_trade.autocomplete("new_owner")
-    async def _ac_new_owner(
-        self, interaction: discord.Interaction, current: str
-    ) -> list[app_commands.Choice[str]]:
-        pool     = interaction.client.pool
-        teams    = await queries.list_teams(pool, interaction.guild_id)
-        original = interaction.namespace.original_team or ""
-        return [
-            app_commands.Choice(name=t["name"], value=t["name"])
-            for t in teams
-            if t["name"] != original and current.lower() in t["name"].lower()
-        ][:25]
 
     # ── /pick remove ──────────────────────────────────────────────────────────
 
@@ -304,18 +309,21 @@ class Picks(commands.Cog):
     ) -> None:
         orig_row = await queries.get_team(self.bot.pool, interaction.guild_id, original_team)
         if not orig_row:
-            await interaction.response.send_message(f"Team **{original_team}** not found.", ephemeral=True)
+            await interaction.response.send_message(
+                f"Team **{original_team}** not found.", ephemeral=True, delete_after=REPLY_DELETE_AFTER
+            )
             return
-
         deleted = await queries.delete_pick(
             self.bot.pool, interaction.guild_id, orig_row["id"], year, round
         )
         if not deleted:
-            await interaction.response.send_message("Pick not found.", ephemeral=True)
+            await interaction.response.send_message(
+                "Pick not found.", ephemeral=True, delete_after=REPLY_DELETE_AFTER
+            )
             return
-
         await interaction.response.send_message(
-            f"Removed {year} {_round_label(round)} pick (originally **{original_team}**).", ephemeral=True
+            f"Removed {year} {_round_label(round)} pick (originally **{original_team}**).",
+            ephemeral=True, delete_after=REPLY_DELETE_AFTER,
         )
         await post_pick_board(self.bot, interaction.guild_id)
 
@@ -323,7 +331,9 @@ class Picks(commands.Cog):
 
     @pick.command(name="refresh", description="Re-post the draft pick board to the configured channel.")
     async def pick_refresh(self, interaction: discord.Interaction) -> None:
-        await interaction.response.send_message("Refreshing pick board…", ephemeral=True)
+        await interaction.response.send_message(
+            "Refreshing pick board…", ephemeral=True, delete_after=REPLY_DELETE_AFTER
+        )
         await post_pick_board(self.bot, interaction.guild_id)
 
 
