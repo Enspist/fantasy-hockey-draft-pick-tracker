@@ -17,6 +17,7 @@ log = logging.getLogger(__name__)
 
 COGS = [
     "cogs.admin",
+    "cogs.management",
     "cogs.settings",
     "cogs.teams",
     "cogs.picks",
@@ -27,10 +28,7 @@ REPO_DIR = Path(__file__).parent.resolve()
 
 
 def pull_latest() -> None:
-    """
-    Pull the latest code from main before the bot starts.
-    The server only has read (pull) access — pushing is not possible.
-    """
+    """Pull the latest code from main before the bot starts."""
     log.info("Pulling latest changes from origin/main…")
     try:
         result = subprocess.run(
@@ -53,6 +51,12 @@ class FantasyHockeyBot(commands.Bot):
         intents = discord.Intents.default()
         super().__init__(command_prefix="!", intents=intents)
         self.pool = None
+        self._restart_requested = False
+
+    def request_restart(self) -> None:
+        """Signal the main loop to restart the bot after it closes."""
+        self._restart_requested = True
+        asyncio.create_task(self.close())
 
     async def setup_hook(self) -> None:
         self.pool = await create_pool()
@@ -62,8 +66,6 @@ class FantasyHockeyBot(commands.Bot):
             await self.load_extension(cog)
             log.info("Loaded cog: %s", cog)
 
-        # Sync to the specific guild so commands appear instantly.
-        # Global sync can take up to an hour to propagate.
         guild = discord.Object(id=config.GUILD_ID)
         self.tree.copy_global_to(guild=guild)
         await self.tree.sync(guild=guild)
@@ -78,11 +80,28 @@ class FantasyHockeyBot(commands.Bot):
         await super().close()
 
 
-async def main() -> None:
-    pull_latest()
+async def _run_bot() -> bool:
+    """
+    Start the bot and run until it stops.
+    Returns True if a restart was requested, False for a clean shutdown.
+    """
     bot = FantasyHockeyBot()
     async with bot:
         await bot.start(config.DISCORD_TOKEN)
+    return bot._restart_requested
+
+
+async def main() -> None:
+    pull_latest()
+    while True:
+        log.info("Starting bot…")
+        restart = await _run_bot()
+        if restart:
+            log.info("Restart requested — restarting bot in 3 seconds…")
+            await asyncio.sleep(3)
+        else:
+            log.info("Bot shut down cleanly.")
+            break
 
 
 if __name__ == "__main__":

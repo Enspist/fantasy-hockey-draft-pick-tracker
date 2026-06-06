@@ -16,7 +16,7 @@ ORDINALS = {
 
 
 def _round_label(r: int) -> str:
-    return ORDINALS.get(r, f"R{r}")
+    return ORDINALS.get(r, f"{r}th")
 
 
 # ── Table embed builder ───────────────────────────────────────────────────────
@@ -27,7 +27,7 @@ def _cell_content(team_name: str, year: int, picks: list) -> str:
 
     Consecutive own-picks collapse into a range:     1 2 3 4 5  →  1-5
     Traded picks show the original owner in parens:  R3 from Alpha  →  3(Alpha)
-    Traded picks break ranges:  own 1,2 | traded 3 from Alpha | own 4,5  →  1-2 3(Alpha) 4-5
+    Traded picks break ranges:  own 1,2 | traded 3 | own 4,5  →  1-2 3(Alpha) 4-5
     Returns '-' if the team has no picks for that year.
     """
     team_picks = [
@@ -37,7 +37,6 @@ def _cell_content(team_name: str, year: int, picks: list) -> str:
     if not team_picks:
         return "-"
 
-    # List of (round, original_team_name) sorted by round
     items = sorted(
         [(p["round"], p["original_team"]) for p in team_picks],
         key=lambda x: x[0],
@@ -49,11 +48,9 @@ def _cell_content(team_name: str, year: int, picks: list) -> str:
         r, orig = items[i]
         is_traded = orig != team_name
         if is_traded:
-            # Show round number and original owner — never merged into a range
             groups.append(f"{r}({orig})")
             i += 1
         else:
-            # Extend a consecutive run of own-picks
             start = r
             end = r
             j = i + 1
@@ -67,16 +64,6 @@ def _cell_content(team_name: str, year: int, picks: list) -> str:
 
 
 def _build_table(teams: list, picks: list, settings: dict) -> str:
-    """
-    Return a monospace table string:
-
-        Team          | 2026        | 2027        | 2028
-        --------------|-------------|-------------|-------------
-        Alpha Wolves  | 1 2 3 4 5   | 1 2* 3 4 5  | 1 2 3 4 5
-        Beta Bears    | 1 2 3 4 5   | 1 2 3 4 5   | 1 2 3 4 5
-
-    * = acquired via trade
-    """
     current_year = datetime.now().year
     years = list(range(current_year, current_year + settings["years_ahead"]))
     team_names = [t["name"] for t in teams]
@@ -84,13 +71,11 @@ def _build_table(teams: list, picks: list, settings: dict) -> str:
     if not team_names:
         return "(No teams have been added yet.)"
 
-    # Pre-compute all cell values
     cells: dict[str, dict[int, str]] = {
         name: {year: _cell_content(name, year, picks) for year in years}
         for name in team_names
     }
 
-    # Column widths
     name_col_w = max((len(n) for n in team_names), default=4)
     name_col_w = max(name_col_w, len("Team"))
 
@@ -99,17 +84,11 @@ def _build_table(teams: list, picks: list, settings: dict) -> str:
         for y in years
     }
 
-    # Header row
     header = "Team".ljust(name_col_w) + " | " + " | ".join(
         str(y).ljust(year_col_w[y]) for y in years
     )
+    sep = "-" * name_col_w + "-+-" + "-+-".join("-" * year_col_w[y] for y in years)
 
-    # Separator
-    sep = "-" * name_col_w + "-+-" + "-+-".join(
-        "-" * year_col_w[y] for y in years
-    )
-
-    # Data rows
     rows = [header, sep]
     for name in team_names:
         row = name.ljust(name_col_w) + " | " + " | ".join(
@@ -125,11 +104,8 @@ def _build_embed(teams: list, picks: list, settings: dict) -> discord.Embed:
         title="🏒 Fantasy Hockey Draft Pick Board",
         color=discord.Color.blue(),
     )
-
     table = _build_table(teams, picks, settings)
     embed.description = f"```\n{table}\n```"
-
-
     return embed
 
 
@@ -149,7 +125,6 @@ async def post_pick_board(bot: commands.Bot, guild_id: int) -> None:
     settings = await queries.get_settings(bot.pool, guild_id)
     embed    = _build_embed(teams, picks, settings)
 
-    # Edit the existing board message rather than posting a new one
     async for msg in channel.history(limit=50):
         if msg.author == bot.user and msg.embeds and "Draft Pick Board" in msg.embeds[0].title:
             await msg.edit(embed=embed)
@@ -165,6 +140,8 @@ class Picks(commands.Cog):
         self.bot = bot
 
     pick = app_commands.Group(name="pick", description="Manage draft picks.")
+
+    # ── /pick add ─────────────────────────────────────────────────────────────
 
     @pick.command(name="add", description="Add a draft pick to a team's original holdings.")
     @app_commands.describe(
@@ -191,11 +168,13 @@ class Picks(commands.Cog):
         )
         await post_pick_board(self.bot, interaction.guild_id)
 
+    # ── /pick trade ───────────────────────────────────────────────────────────
+
     @pick.command(name="trade", description="Record a draft pick trade between two teams.")
     @app_commands.describe(
         original_team="Team that originally owned the pick.",
         year="Draft year of the pick.",
-        round="Round number (1–20).",
+        round="Round of the pick.",
         new_owner="Team receiving the pick.",
     )
     @has_admin_role()
@@ -204,7 +183,7 @@ class Picks(commands.Cog):
         interaction: discord.Interaction,
         original_team: str,
         year: int,
-        round: app_commands.Range[int, 1, 20],
+        round: int,
         new_owner: str,
     ) -> None:
         guild_id = interaction.guild_id
@@ -229,10 +208,82 @@ class Picks(commands.Cog):
             return
 
         await interaction.response.send_message(
-            f"Traded {year} {_round_label(round)} pick from **{original_team}** → **{new_owner}**.",
+            f"Traded {year} {_round_label(round)} pick (originally **{original_team}**) → **{new_owner}**.",
             ephemeral=True,
         )
         await post_pick_board(self.bot, interaction.guild_id)
+
+    # Autocomplete: original_team — all teams in the guild
+    @pick_trade.autocomplete("original_team")
+    async def _ac_original_team(
+        self, interaction: discord.Interaction, current: str
+    ) -> list[app_commands.Choice[str]]:
+        teams = await queries.list_teams(self.bot.pool, interaction.guild_id)
+        return [
+            app_commands.Choice(name=t["name"], value=t["name"])
+            for t in teams
+            if current.lower() in t["name"].lower()
+        ][:25]
+
+    # Autocomplete: year — years that have picks for the chosen original_team
+    @pick_trade.autocomplete("year")
+    async def _ac_year(
+        self, interaction: discord.Interaction, current: str
+    ) -> list[app_commands.Choice[int]]:
+        team_name = interaction.namespace.original_team
+        if not team_name:
+            return []
+        team = await queries.get_team(self.bot.pool, interaction.guild_id, team_name)
+        if not team:
+            return []
+        years = await queries.get_pick_years_for_team(
+            self.bot.pool, interaction.guild_id, team["id"]
+        )
+        return [
+            app_commands.Choice(name=str(y), value=y)
+            for y in years
+            if not current or current in str(y)
+        ][:25]
+
+    # Autocomplete: round — rounds that exist for chosen original_team + year
+    @pick_trade.autocomplete("round")
+    async def _ac_round(
+        self, interaction: discord.Interaction, current: str
+    ) -> list[app_commands.Choice[int]]:
+        team_name = interaction.namespace.original_team
+        raw_year  = interaction.namespace.year
+        if not team_name or not raw_year:
+            return []
+        try:
+            year = int(raw_year)
+        except (TypeError, ValueError):
+            return []
+        team = await queries.get_team(self.bot.pool, interaction.guild_id, team_name)
+        if not team:
+            return []
+        rounds = await queries.get_pick_rounds_for_team_year(
+            self.bot.pool, interaction.guild_id, team["id"], year
+        )
+        return [
+            app_commands.Choice(name=_round_label(r), value=r)
+            for r in rounds
+            if not current or current in str(r)
+        ][:25]
+
+    # Autocomplete: new_owner — all teams except the original_team
+    @pick_trade.autocomplete("new_owner")
+    async def _ac_new_owner(
+        self, interaction: discord.Interaction, current: str
+    ) -> list[app_commands.Choice[str]]:
+        teams = await queries.list_teams(self.bot.pool, interaction.guild_id)
+        original = interaction.namespace.original_team or ""
+        return [
+            app_commands.Choice(name=t["name"], value=t["name"])
+            for t in teams
+            if t["name"] != original and current.lower() in t["name"].lower()
+        ][:25]
+
+    # ── /pick remove ──────────────────────────────────────────────────────────
 
     @pick.command(name="remove", description="Remove a draft pick entirely.")
     @app_commands.describe(
@@ -264,6 +315,8 @@ class Picks(commands.Cog):
             f"Removed {year} {_round_label(round)} pick (originally **{original_team}**).", ephemeral=True
         )
         await post_pick_board(self.bot, interaction.guild_id)
+
+    # ── /pick refresh ─────────────────────────────────────────────────────────
 
     @pick.command(name="refresh", description="Re-post the draft pick board to the configured channel.")
     async def pick_refresh(self, interaction: discord.Interaction) -> None:
