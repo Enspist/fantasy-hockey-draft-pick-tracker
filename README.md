@@ -39,7 +39,7 @@ fantasy-hockey-bot.service     — systemd unit for Linux (alternative to run.sh
 
 ## How updates work
 
-Every time the bot starts it runs `git pull origin main` before connecting to Discord, so it is always running the latest code. The server only has **read access** via a deploy key — it cannot push changes to any branch. All commits must come from an authorised developer account.
+Every time the bot starts it runs `git pull origin main` before connecting to Discord, so it is always on the latest code. Because the repo was cloned over HTTPS without credentials, pushing is not possible — anyone running the bot can only pull. All commits must come from an authorised GitHub account.
 
 ---
 
@@ -113,17 +113,9 @@ Press `Ctrl+C` to stop.
 ## Linux server deployment (systemd)
 
 ```bash
-# Clone directly onto the server
-sudo mkdir -p /opt/fantasy-hockey-bot
-sudo git clone https://github.com/Enspist/fantasy-hockey-draft-pick-tracker.git /opt/fantasy-hockey-bot
-
-# Create a dedicated low-privilege user
-sudo useradd -r -s /bin/false discord
-sudo chown -R discord:discord /opt/fantasy-hockey-bot
-
-# Run the installer as the service user
-cd /opt/fantasy-hockey-bot
-sudo -u discord bash install.sh
+git clone https://github.com/Enspist/fantasy-hockey-draft-pick-tracker.git
+cd fantasy-hockey-draft-pick-tracker
+bash install.sh
 
 # Install and start the service
 sudo cp fantasy-hockey-bot.service /etc/systemd/system/
