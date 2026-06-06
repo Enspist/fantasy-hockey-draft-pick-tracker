@@ -61,8 +61,12 @@ class FantasyHockeyBot(commands.Bot):
             await self.load_extension(cog)
             log.info("Loaded cog: %s", cog)
 
-        await self.tree.sync()
-        log.info("Slash commands synced.")
+        # Sync to the specific guild so commands appear instantly.
+        # Global sync can take up to an hour to propagate.
+        guild = discord.Object(id=config.GUILD_ID)
+        self.tree.copy_global_to(guild=guild)
+        await self.tree.sync(guild=guild)
+        log.info("Slash commands synced to guild %s.", config.GUILD_ID)
 
     async def on_ready(self) -> None:
         log.info("Logged in as %s (ID: %s)", self.user, self.user.id)
