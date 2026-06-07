@@ -152,8 +152,15 @@ async def post_pick_board(bot: commands.Bot, guild_id: int, *, purge: bool = Fal
 
 
 # ── Autocomplete callbacks (module-level for reliable binding) ────────────────
+# /pick trade works from the CURRENT HOLDER's perspective:
+#   team   → the team trading the pick away (current holder)
+#   year   → years where that team currently holds picks
+#   pick   → the specific pick they hold, labelled with its origin.
+#            value encodes "<original_team_id>:<round>" so duplicates
+#            (own R3 + an acquired R3) are distinguishable.
+#   new_owner → the team receiving the pick.
 
-async def _ac_original_team(
+async def _ac_from_team(
     interaction: discord.Interaction, current: str
 ) -> list[app_commands.Choice[str]]:
     teams = await queries.list_teams(interaction.client.pool, interaction.guild_id)
@@ -168,13 +175,13 @@ async def _ac_year(
     interaction: discord.Interaction, current: str
 ) -> list[app_commands.Choice[int]]:
     pool      = interaction.client.pool
-    team_name = interaction.namespace.original_team
+    team_name = interaction.namespace.team
     if not team_name:
         return []
     team = await queries.get_team(pool, interaction.guild_id, team_name)
     if not team:
         return []
-    years = await queries.get_pick_years_for_team(pool, interaction.guild_id, team["id"])
+    years = await queries.get_years_team_holds(pool, interaction.guild_id, team["id"])
     return [
         app_commands.Choice(name=str(y), value=y)
         for y in years
@@ -182,11 +189,11 @@ async def _ac_year(
     ][:25]
 
 
-async def _ac_round(
+async def _ac_pick(
     interaction: discord.Interaction, current: str
-) -> list[app_commands.Choice[int]]:
+) -> list[app_commands.Choice[str]]:
     pool      = interaction.client.pool
-    team_name = interaction.namespace.original_team
+    team_name = interaction.namespace.team
     raw_year  = interaction.namespace.year
     if not team_name or raw_year is None:
         return []
@@ -197,24 +204,31 @@ async def _ac_round(
     team = await queries.get_team(pool, interaction.guild_id, team_name)
     if not team:
         return []
-    rounds = await queries.get_pick_rounds_for_team_year(pool, interaction.guild_id, team["id"], year)
-    return [
-        app_commands.Choice(name=f"{_round_label(r)} round", value=r)
-        for r in rounds
-        if not current or current in str(r)
-    ][:25]
+
+    held = await queries.get_picks_team_holds(pool, interaction.guild_id, team["id"], year)
+    choices: list[app_commands.Choice[str]] = []
+    for p in held:
+        if p["original_team"] == team_name:
+            label = f"{_round_label(p['round'])} round (own)"
+        else:
+            label = f"{_round_label(p['round'])} round (from {p['original_team']})"
+        if current and current.lower() not in label.lower():
+            continue
+        # value encodes original_team_id:round so the command can find the exact pick
+        choices.append(app_commands.Choice(name=label, value=f"{p['original_team_id']}:{p['round']}"))
+    return choices[:25]
 
 
 async def _ac_new_owner(
     interaction: discord.Interaction, current: str
 ) -> list[app_commands.Choice[str]]:
-    pool     = interaction.client.pool
-    teams    = await queries.list_teams(pool, interaction.guild_id)
-    original = interaction.namespace.original_team or ""
+    pool      = interaction.client.pool
+    teams     = await queries.list_teams(pool, interaction.guild_id)
+    from_team = interaction.namespace.team or ""
     return [
         app_commands.Choice(name=t["name"], value=t["name"])
         for t in teams
-        if t["name"] != original and current.lower() in t["name"].lower()
+        if t["name"] != from_team and current.lower() in t["name"].lower()
     ][:25]
 
 
@@ -259,31 +273,32 @@ class Picks(commands.Cog):
 
     @pick.command(name="trade", description="Record a draft pick trade between two teams.")
     @app_commands.describe(
-        original_team="Team the pick originated from (shown in brackets on the board, e.g. '3(Alpha)').",
+        team="Team trading the pick away (the team that currently holds it).",
         year="Draft year — options populate after selecting a team.",
-        round="Round — options populate after selecting a team and year.",
+        pick="The pick to trade — options populate after selecting a team and year.",
         new_owner="Team receiving the pick.",
     )
     @app_commands.autocomplete(
-        original_team=_ac_original_team,
+        team=_ac_from_team,
         year=_ac_year,
-        round=_ac_round,
+        pick=_ac_pick,
         new_owner=_ac_new_owner,
     )
     @has_admin_role()
     async def pick_trade(
         self,
         interaction: discord.Interaction,
-        original_team: str,
+        team: str,
         year: int,
-        round: int,
+        pick: str,
         new_owner: str,
     ) -> None:
         guild_id = interaction.guild_id
-        orig_row = await queries.get_team(self.bot.pool, guild_id, original_team)
-        if not orig_row:
+
+        from_row = await queries.get_team(self.bot.pool, guild_id, team)
+        if not from_row:
             await interaction.response.send_message(
-                f"Team **{original_team}** not found.", ephemeral=True, delete_after=REPLY_DELETE_AFTER
+                f"Team **{team}** not found.", ephemeral=True, delete_after=REPLY_DELETE_AFTER
             )
             return
         new_row = await queries.get_team(self.bot.pool, guild_id, new_owner)
@@ -292,17 +307,31 @@ class Picks(commands.Cog):
                 f"Team **{new_owner}** not found.", ephemeral=True, delete_after=REPLY_DELETE_AFTER
             )
             return
-        updated = await queries.trade_pick(
-            self.bot.pool, guild_id, orig_row["id"], year, round, new_row["id"]
-        )
-        if not updated:
+
+        # pick value is "<original_team_id>:<round>" from the autocomplete
+        try:
+            original_team_id_str, round_str = pick.split(":")
+            original_team_id = int(original_team_id_str)
+            round_num = int(round_str)
+        except (ValueError, AttributeError):
             await interaction.response.send_message(
-                f"Could not find that pick or it already belongs to **{new_owner}**.",
+                "Invalid pick — please select one from the autocomplete list.",
                 ephemeral=True, delete_after=REPLY_DELETE_AFTER,
             )
             return
+
+        updated = await queries.trade_pick_held(
+            self.bot.pool, guild_id, from_row["id"], original_team_id, year, round_num, new_row["id"]
+        )
+        if not updated:
+            await interaction.response.send_message(
+                f"Could not find that pick held by **{team}** (it may have already been traded).",
+                ephemeral=True, delete_after=REPLY_DELETE_AFTER,
+            )
+            return
+
         await interaction.response.send_message(
-            f"Traded {year} {_round_label(round)} pick (originally **{original_team}**) → **{new_owner}**.",
+            f"Traded {year} {_round_label(round_num)} round pick from **{team}** → **{new_owner}**.",
             ephemeral=True, delete_after=REPLY_DELETE_AFTER,
         )
         await post_pick_board(self.bot, interaction.guild_id)
@@ -377,8 +406,8 @@ async def setup(bot: commands.Bot) -> None:
         log.error("Autocomplete setup: 'pick trade' command not found in tree.")
         return
 
-    trade_cmd.autocomplete("original_team")(_ac_original_team)
+    trade_cmd.autocomplete("team")(_ac_from_team)
     trade_cmd.autocomplete("year")(_ac_year)
-    trade_cmd.autocomplete("round")(_ac_round)
+    trade_cmd.autocomplete("pick")(_ac_pick)
     trade_cmd.autocomplete("new_owner")(_ac_new_owner)
     log.info("Autocomplete callbacks registered on 'pick trade'.")

@@ -199,6 +199,63 @@ async def get_pick_rounds_for_team_year(
     return [r["round"] for r in rows]
 
 
+# ── Current-holder lookups (for /pick trade) ──────────────────────────────────
+
+async def get_years_team_holds(
+    pool: asyncpg.Pool, guild_id: int, current_team_id: int
+) -> list[int]:
+    """Distinct years where the team CURRENTLY holds at least one pick."""
+    rows = await pool.fetch("""
+        SELECT DISTINCT season_year
+        FROM draft_picks
+        WHERE guild_id = $1 AND current_team_id = $2
+        ORDER BY season_year
+    """, guild_id, current_team_id)
+    return [r["season_year"] for r in rows]
+
+
+async def get_picks_team_holds(
+    pool: asyncpg.Pool, guild_id: int, current_team_id: int, year: int
+) -> list[asyncpg.Record]:
+    """
+    Picks the team CURRENTLY holds for a given year, including the original
+    team's id and name (so the UI can show '3rd round (from Chytil)').
+    """
+    return await pool.fetch("""
+        SELECT dp.round, dp.original_team_id, orig.name AS original_team
+        FROM draft_picks dp
+        JOIN teams orig ON orig.id = dp.original_team_id
+        WHERE dp.guild_id = $1 AND dp.current_team_id = $2 AND dp.season_year = $3
+        ORDER BY dp.round
+    """, guild_id, current_team_id, year)
+
+
+async def trade_pick_held(
+    pool: asyncpg.Pool,
+    guild_id: int,
+    from_team_id: int,
+    original_team_id: int,
+    season_year: int,
+    round_num: int,
+    new_owner_id: int,
+) -> bool:
+    """
+    Transfer a pick that from_team_id currently holds to new_owner_id.
+    The pick is identified by (original_team_id, year, round) and guarded
+    by current_team_id = from_team_id so you can only trade picks you hold.
+    """
+    result = await pool.execute("""
+        UPDATE draft_picks
+        SET current_team_id = $6
+        WHERE guild_id = $1
+          AND current_team_id = $2
+          AND original_team_id = $3
+          AND season_year = $4
+          AND round = $5
+    """, guild_id, from_team_id, original_team_id, season_year, round_num, new_owner_id)
+    return result != "UPDATE 0"
+
+
 async def delete_pick(
     pool: asyncpg.Pool,
     guild_id: int,
