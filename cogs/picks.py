@@ -94,10 +94,24 @@ def _build_year_embed(year: int, teams: list, picks: list) -> discord.Embed:
 
 # ── Board poster ──────────────────────────────────────────────────────────────
 
-async def post_pick_board(bot: commands.Bot, guild_id: int) -> None:
+def _is_board_message(msg: discord.Message, bot_user: discord.ClientUser) -> bool:
+    """True if msg is one of the bot's draft-pick board embeds."""
+    return (
+        msg.author == bot_user
+        and bool(msg.embeds)
+        and bool(msg.embeds[0].title)
+        and msg.embeds[0].title.endswith("Draft Picks")
+    )
+
+
+async def post_pick_board(bot: commands.Bot, guild_id: int, *, purge: bool = False) -> None:
     """
     Post or update one message per tracked year in the configured channel.
     Years are processed in ascending order so new posts appear chronologically.
+
+    If purge=True, delete all existing board messages first and post fresh
+    ones (used by /pick refresh).  Otherwise existing year messages are
+    edited in place and any missing years are appended.
     """
     channel_id = await queries.get_channel(bot.pool, guild_id)
     if not channel_id:
@@ -113,10 +127,19 @@ async def post_pick_board(bot: commands.Bot, guild_id: int) -> None:
     current_year = datetime.now().year
     years        = list(range(current_year, current_year + settings["years_ahead"]))
 
+    if purge:
+        # Delete every existing board message, then repost all years fresh
+        async for msg in channel.history(limit=200):
+            if _is_board_message(msg, bot.user):
+                await msg.delete()
+        for year in years:
+            await channel.send(embed=_build_year_embed(year, teams, picks))
+        return
+
     # Map existing year messages by title so we can edit in place
     existing: dict[str, discord.Message] = {}
     async for msg in channel.history(limit=200):
-        if msg.author == bot.user and msg.embeds and msg.embeds[0].title:
+        if _is_board_message(msg, bot.user):
             existing[msg.embeds[0].title] = msg
 
     for year in years:
@@ -322,12 +345,15 @@ class Picks(commands.Cog):
 
     # ── /pick refresh ─────────────────────────────────────────────────────────
 
-    @pick.command(name="refresh", description="Re-post all year boards to the configured channel.")
+    @pick.command(
+        name="refresh",
+        description="Delete and re-post all year boards (clears out any stale messages).",
+    )
     async def pick_refresh(self, interaction: discord.Interaction) -> None:
         await interaction.response.send_message(
             "Refreshing pick boards…", ephemeral=True, delete_after=REPLY_DELETE_AFTER
         )
-        await post_pick_board(self.bot, interaction.guild_id)
+        await post_pick_board(self.bot, interaction.guild_id, purge=True)
 
 
 async def setup(bot: commands.Bot) -> None:
