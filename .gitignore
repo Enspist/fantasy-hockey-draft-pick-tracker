@@ -8,6 +8,9 @@ venv/
 # Log files
 logs/
 
+# Claude Code local files
+.claude/
+
 # Config + secret files — NEVER commit these
 config/bot_config.yaml
 config/secret/
