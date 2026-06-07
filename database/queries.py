@@ -156,6 +156,17 @@ async def get_all_picks(pool: asyncpg.Pool, guild_id: int) -> list[asyncpg.Recor
     """, guild_id)
 
 
+async def get_traded_pick_years(pool: asyncpg.Pool, guild_id: int) -> list[int]:
+    """Distinct years that have at least one pick needing to be moved."""
+    rows = await pool.fetch("""
+        SELECT DISTINCT season_year
+        FROM draft_picks
+        WHERE guild_id = $1 AND original_team_id != current_team_id
+        ORDER BY season_year
+    """, guild_id)
+    return [r["season_year"] for r in rows]
+
+
 async def get_traded_picks(pool: asyncpg.Pool, guild_id: int) -> list[asyncpg.Record]:
     """Return only picks whose current owner differs from the original team."""
     return await pool.fetch("""
