@@ -54,7 +54,7 @@ POSTGRES_PROBE_PORTS = [5432, 5433]
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-def _prompt(label: str, secret: bool = False, default: str = "") -> str:
+def _prompt(label: str, secret: bool = False, default: str = "", allow_empty: bool = False) -> str:
     suffix = f" [{default}]" if default else ""
     prompt_str = f"{label}{suffix}: "
     while True:
@@ -63,6 +63,8 @@ def _prompt(label: str, secret: bool = False, default: str = "") -> str:
             return default
         if value:
             return value
+        if allow_empty:
+            return ""
         print("  ✗ This field cannot be empty.")
 
 
@@ -241,12 +243,13 @@ def _encrypt_token(key: bytes, token: str) -> None:
     print(f"  ✓ Token encrypted → {TOKEN_ENC_FILE}")
 
 
-def _write_config(guild_id: str, admin_role: str, picks_channel: str) -> None:
+def _write_config(guild_id: str, admin_role: str, picks_channel: str, bot_admin_role: str) -> None:
     cfg = configparser.ConfigParser()
     cfg["bot"] = {
-        "guild_id":      guild_id,
-        "admin_role":    admin_role,
-        "picks_channel": picks_channel,
+        "guild_id":       guild_id,
+        "admin_role":     admin_role,
+        "bot_admin_role": bot_admin_role,   # may be empty (optional)
+        "picks_channel":  picks_channel,
     }
     with CONFIG_FILE.open("w") as fh:
         cfg.write(fh)
@@ -284,6 +287,9 @@ def main() -> None:
     print("── Discord server settings ─────────────────────────────────")
     guild_id      = _prompt("  Guild (server) ID")
     admin_role    = _prompt("  Admin role name", default="Commissioner")
+    print("  Optional: a role that can ONLY run /bot restart (manage the bot)")
+    print("  but cannot change trades/teams/picks. Press Enter to skip.")
+    bot_admin_role = _prompt("  Bot-manager role name (optional)", allow_empty=True)
     picks_channel = _prompt("  Picks board channel ID")
     print()
 
@@ -292,7 +298,7 @@ def main() -> None:
     fernet_key = _load_or_create_fernet_key()
     _save_db_creds(fernet_key, host, port, dbname)
     _encrypt_token(fernet_key, token)
-    _write_config(guild_id, admin_role, picks_channel)
+    _write_config(guild_id, admin_role, picks_channel, bot_admin_role)
 
     print()
     print("=" * 60)

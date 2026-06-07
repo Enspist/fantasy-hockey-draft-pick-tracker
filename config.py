@@ -52,6 +52,10 @@ DATABASE_URL: str   = build_database_url()
 GUILD_ID: int       = int(_ini["bot"]["guild_id"])
 ADMIN_ROLE: str     = _ini["bot"]["admin_role"]
 PICKS_CHANNEL: int  = int(_ini["bot"]["picks_channel"])
+
+# Optional role that can run bot-management commands (/bot restart) but
+# cannot manage trades/teams/picks. Leave blank to disable.
+BOT_ADMIN_ROLE: str = _ini["bot"].get("bot_admin_role", "").strip()
 LOG_KEEP: int       = int(_ini["bot"].get("log_keep", "5"))
 
 # How long (seconds) before ephemeral admin-command replies auto-delete

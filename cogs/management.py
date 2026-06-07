@@ -2,7 +2,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from cogs.checks import has_admin_role
+from cogs.checks import has_bot_admin_role
 
 
 class Management(commands.Cog):
@@ -12,7 +12,7 @@ class Management(commands.Cog):
     mgmt = app_commands.Group(name="bot", description="Bot management commands.")
 
     @mgmt.command(name="restart", description="Restart the bot without closing the terminal.")
-    @has_admin_role()
+    @has_bot_admin_role()
     async def mgmt_restart(self, interaction: discord.Interaction) -> None:
         # No delete_after here: the bot closes its HTTP session during restart,
         # so a deferred delete would fail with "Session is closed". This
