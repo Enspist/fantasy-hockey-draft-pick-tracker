@@ -10,7 +10,7 @@ logs/
 
 # Config + secret files — NEVER commit these
 config/bot_config.yaml
-config/*.pkl
+config/secret/
 
 # Keep the example template
 !config/bot_config.yaml.example

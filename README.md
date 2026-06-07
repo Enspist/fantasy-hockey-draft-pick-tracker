@@ -15,8 +15,9 @@ paths.py                               — central definitions for all config/se
 config.py                              — reads config/bot_config.yaml + decrypts secrets
 config/
   bot_config.yaml.example      — template for the YAML config
+  secret/                      — hidden folder holding the encrypted .pkl secrets
 database/
-  credentials.py               — decrypts config/db_creds.pkl and builds the connection URL
+  credentials.py               — decrypts config/secret/db_creds.pkl and builds the connection URL
   connection.py                — asyncpg pool + schema init
   queries.py                   — all SQL helpers
 cogs/
@@ -35,9 +36,9 @@ fantasy-hockey-bot.service     — systemd unit for Linux (alternative to run.sh
 | File | Contents | Format |
 |---|---|---|
 | `config/bot_config.yaml` | Guild ID, admin role, optional bot-manager role, channel ID, log_keep | YAML — edit by hand to change |
-| `config/token_key.pkl` | Fernet encryption key (protects both secrets) | Pickled bytes, chmod 600 |
-| `config/token.pkl` | Encrypted Discord bot token | Pickled ciphertext, chmod 600 |
-| `config/db_creds.pkl` | Encrypted DB host, port, name, `FantasyBot` user + password | Pickled ciphertext, chmod 600 |
+| `config/secret/token_key.pkl` | Fernet encryption key (protects both secrets) | Pickled bytes, hidden, chmod 600 |
+| `config/secret/token.pkl` | Encrypted Discord bot token | Pickled ciphertext, hidden, chmod 600 |
+| `config/secret/db_creds.pkl` | Encrypted DB host, port, name, `FantasyBot` user + password | Pickled ciphertext, hidden, chmod 600 |
 
 ---
 
@@ -82,7 +83,7 @@ The installer will:
 - Create `./venv` and install all dependencies
 - Auto-detect PostgreSQL on `localhost:5432` / `:5433` (asks for remote host/port if not found)
 - Prompt for DB name, master username, master password → creates the DB + `FantasyBot` app user
-- Prompt for Discord bot token → encrypted in `config/token.pkl` / `config/token_key.pkl`
+- Prompt for Discord bot token → encrypted in `config/secret/token.pkl` / `config/secret/token_key.pkl`
 - Prompt for guild ID, admin role, optional bot-manager role, channel ID → saved to `config/bot_config.yaml`
 
 To change **guild/role/channel settings** later, open `config/bot_config.yaml` in any text editor.

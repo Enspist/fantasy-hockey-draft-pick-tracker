@@ -20,9 +20,9 @@ else:
     VENV_PYTHON = SCRIPT_DIR / "venv" / "bin" / "python"
 
 REQUIRED_FILES = [
-    "config/token_key.pkl",
-    "config/token.pkl",
-    "config/db_creds.pkl",
+    "config/secret/token_key.pkl",
+    "config/secret/token.pkl",
+    "config/secret/db_creds.pkl",
     "config/bot_config.yaml",
 ]
 

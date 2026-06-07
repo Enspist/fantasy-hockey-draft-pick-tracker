@@ -40,6 +40,7 @@ from cryptography.fernet import Fernet
 
 from paths import (
     CONFIG_DIR, CONFIG_FILE, TOKEN_KEY_FILE, TOKEN_ENC_FILE, DB_CREDS_FILE,
+    ensure_secret_dir,
 )
 
 # Credentials used by the bot at runtime (never changes)
@@ -74,7 +75,7 @@ def _restrict(path) -> None:
 
 def _load_or_create_fernet_key() -> bytes:
     """Return the existing key if present, otherwise generate and persist one."""
-    CONFIG_DIR.mkdir(exist_ok=True)
+    ensure_secret_dir()
     if TOKEN_KEY_FILE.exists():
         return pickle.loads(TOKEN_KEY_FILE.read_bytes())
     key = Fernet.generate_key()
