@@ -1,63 +1,58 @@
 """
 Runtime configuration loader.
 
-Sources (all created by setup.py — never committed to git):
-  bot_config.ini   — guild ID, admin role name, channel  (plain text, editable)
-  .token.key       — Fernet encryption key shared by token + DB creds  (chmod 600)
-  .token.enc       — encrypted Discord bot token                        (chmod 600)
-  .db_creds.enc    — encrypted pickle: DB host/port/name/user/password  (chmod 600)
+Sources (all created by setup.py, all under ./config — never committed):
+  config/bot_config.yaml   — guild ID, roles, channel, log_keep  (plain YAML, editable)
+  config/token_key.pkl     — pickled Fernet key                  (secret)
+  config/token.pkl         — pickled encrypted Discord token      (secret)
+  config/db_creds.pkl      — pickled encrypted DB credentials     (secret)
 """
 
-import configparser
-from pathlib import Path
+import pickle
 
+import yaml
 from cryptography.fernet import Fernet
 
-_CONFIG_FILE    = Path("bot_config.ini")
-_TOKEN_KEY_FILE = Path(".token.key")
-_TOKEN_ENC_FILE = Path(".token.enc")
+from paths import CONFIG_FILE, TOKEN_KEY_FILE, TOKEN_ENC_FILE
 
 
-def _require_file(path: Path) -> Path:
+def _require_file(path):
     if not path.exists():
         raise FileNotFoundError(
-            f"Required file '{path}' not found.  Run 'python setup.py' first."
+            f"Required file '{path}' not found. Run the installer / setup.py first."
         )
     return path
 
 
-def _load_ini() -> configparser.ConfigParser:
-    cfg = configparser.ConfigParser()
-    cfg.read(_require_file(_CONFIG_FILE))
-    return cfg
+def _load_yaml() -> dict:
+    with _require_file(CONFIG_FILE).open("r", encoding="utf-8") as fh:
+        return yaml.safe_load(fh) or {}
 
 
 def _decrypt_token() -> str:
-    key        = _require_file(_TOKEN_KEY_FILE).read_bytes()
-    ciphertext = _require_file(_TOKEN_ENC_FILE).read_bytes()
+    key        = pickle.loads(_require_file(TOKEN_KEY_FILE).read_bytes())
+    ciphertext = pickle.loads(_require_file(TOKEN_ENC_FILE).read_bytes())
     return Fernet(key).decrypt(ciphertext).decode()
 
 
 # ── Exported values ────────────────────────────────────────────────────────────
 
-_ini = _load_ini()
+_cfg = _load_yaml()
+_bot = _cfg.get("bot", {})
 
 DISCORD_TOKEN: str  = _decrypt_token()
 
-# DATABASE_URL is built lazily from the encrypted .db_creds.enc file.
-# Import it from database.credentials to avoid a circular import at startup.
+# DATABASE_URL is built from the encrypted db_creds.pkl file.
 from database.credentials import build_database_url  # noqa: E402
 DATABASE_URL: str   = build_database_url()
 
-GUILD_ID: int       = int(_ini["bot"]["guild_id"])
-ADMIN_ROLE: str     = _ini["bot"]["admin_role"]
-PICKS_CHANNEL: int  = int(_ini["bot"]["picks_channel"])
+GUILD_ID: int       = int(_bot["guild_id"])
+ADMIN_ROLE: str     = str(_bot["admin_role"])
+PICKS_CHANNEL: int  = int(_bot["picks_channel"])
+LOG_KEEP: int       = int(_bot.get("log_keep", 5))
 
-# Optional role that can run bot-management commands (/bot restart) but
-# cannot manage trades/teams/picks. Leave blank to disable.
-BOT_ADMIN_ROLE: str = _ini["bot"].get("bot_admin_role", "").strip()
-LOG_KEEP: int       = int(_ini["bot"].get("log_keep", "5"))
+# Optional role that can run bot-management commands (/bot restart) only.
+BOT_ADMIN_ROLE: str = str(_bot.get("bot_admin_role") or "").strip()
 
-# How long (seconds) before ephemeral admin-command replies auto-delete
+# How long (seconds) before ephemeral admin-command replies auto-delete.
 REPLY_DELETE_AFTER: int = 300
-

@@ -8,12 +8,10 @@ venv/
 # Log files
 logs/
 
-# Secret / generated files — NEVER commit these
-.token.key
-.token.enc
-.db_creds.enc
-bot_config.ini
+# Config + secret files — NEVER commit these
+config/bot_config.yaml
+config/*.pkl
 
-# Keep the examples
-!bot_config.ini.example
+# Keep the example template
+!config/bot_config.yaml.example
 !.env.example

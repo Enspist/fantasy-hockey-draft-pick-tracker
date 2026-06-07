@@ -14,35 +14,33 @@ What it does
      • Creates the database if it does not already exist.
      • Creates the 'FantasyBot' application user if it does not already exist.
      • Grants full privileges on the database to 'FantasyBot'.
-3. Saves { host, port, dbname, user, password } to an encrypted .pkl file
-   (.db_creds.enc) protected by the same Fernet key used for the token.
-4. Prompts for the Discord bot token → encrypted as .token.enc / .token.key.
+3. Saves { host, port, dbname, user, password } to config/db_creds.pkl
+   (encrypted) protected by the same Fernet key used for the token.
+4. Prompts for the Discord bot token → config/token.pkl + config/token_key.pkl.
 5. Prompts for guild ID, admin role, picks channel, webhook settings
-   → plain-text bot_config.ini (editable by hand).
+   → config/bot_config.yaml (editable by hand).
 
-Secret files written (all chmod 600 on Linux):
-    .token.key      Fernet encryption key (protects both .token.enc and .db_creds.enc)
-    .token.enc      Encrypted Discord bot token
-    .db_creds.enc   Encrypted pickle containing DB connection credentials
+Everything lives under ./config. Secret files are pickled (.pkl) so they
+are not human-readable (all chmod 600 on Linux):
+    config/token_key.pkl   Fernet key (protects token.pkl and db_creds.pkl)
+    config/token.pkl       Encrypted Discord bot token
+    config/db_creds.pkl    Encrypted DB connection credentials
 """
 
 import asyncio
-import configparser
 import getpass
 import os
 import pickle
 import socket
 import sys
-from pathlib import Path
 
 import asyncpg
+import yaml
 from cryptography.fernet import Fernet
 
-# ── File paths ─────────────────────────────────────────────────────────────────
-CONFIG_FILE     = Path("bot_config.ini")
-TOKEN_KEY_FILE  = Path(".token.key")
-TOKEN_ENC_FILE  = Path(".token.enc")
-DB_CREDS_FILE   = Path(".db_creds.enc")
+from paths import (
+    CONFIG_DIR, CONFIG_FILE, TOKEN_KEY_FILE, TOKEN_ENC_FILE, DB_CREDS_FILE,
+)
 
 # Credentials used by the bot at runtime (never changes)
 BOT_DB_USER     = "FantasyBot"
@@ -68,7 +66,7 @@ def _prompt(label: str, secret: bool = False, default: str = "", allow_empty: bo
         print("  ✗ This field cannot be empty.")
 
 
-def _restrict(path: Path) -> None:
+def _restrict(path) -> None:
     """chmod 600 on POSIX so only the owner can read the file."""
     if os.name == "posix":
         path.chmod(0o600)
@@ -76,10 +74,11 @@ def _restrict(path: Path) -> None:
 
 def _load_or_create_fernet_key() -> bytes:
     """Return the existing key if present, otherwise generate and persist one."""
+    CONFIG_DIR.mkdir(exist_ok=True)
     if TOKEN_KEY_FILE.exists():
-        return TOKEN_KEY_FILE.read_bytes()
+        return pickle.loads(TOKEN_KEY_FILE.read_bytes())
     key = Fernet.generate_key()
-    TOKEN_KEY_FILE.write_bytes(key)
+    TOKEN_KEY_FILE.write_bytes(pickle.dumps(key))
     _restrict(TOKEN_KEY_FILE)
     print(f"  ✓ New Fernet key generated → {TOKEN_KEY_FILE}")
     return key
@@ -221,7 +220,7 @@ async def _provision_database(
 # ── Credential persistence ────────────────────────────────────────────────────
 
 def _save_db_creds(key: bytes, host: str, port: int, dbname: str) -> None:
-    """Pickle the bot's DB credentials and encrypt them with the Fernet key."""
+    """Encrypt the bot's DB credentials and store them in a pickled .pkl file."""
     creds = {
         "host":     host,
         "port":     port,
@@ -229,30 +228,32 @@ def _save_db_creds(key: bytes, host: str, port: int, dbname: str) -> None:
         "user":     BOT_DB_USER,
         "password": BOT_DB_PASSWORD,
     }
-    raw = pickle.dumps(creds)
-    encrypted = _fernet(key).encrypt(raw)
-    DB_CREDS_FILE.write_bytes(encrypted)
+    encrypted = _fernet(key).encrypt(pickle.dumps(creds))
+    DB_CREDS_FILE.write_bytes(pickle.dumps(encrypted))
     _restrict(DB_CREDS_FILE)
     print(f"  ✓ DB credentials encrypted → {DB_CREDS_FILE}")
 
 
 def _encrypt_token(key: bytes, token: str) -> None:
     ciphertext = _fernet(key).encrypt(token.encode())
-    TOKEN_ENC_FILE.write_bytes(ciphertext)
+    TOKEN_ENC_FILE.write_bytes(pickle.dumps(ciphertext))
     _restrict(TOKEN_ENC_FILE)
     print(f"  ✓ Token encrypted → {TOKEN_ENC_FILE}")
 
 
 def _write_config(guild_id: str, admin_role: str, picks_channel: str, bot_admin_role: str) -> None:
-    cfg = configparser.ConfigParser()
-    cfg["bot"] = {
-        "guild_id":       guild_id,
-        "admin_role":     admin_role,
-        "bot_admin_role": bot_admin_role,   # may be empty (optional)
-        "picks_channel":  picks_channel,
+    CONFIG_DIR.mkdir(exist_ok=True)
+    data = {
+        "bot": {
+            "guild_id":       int(guild_id),
+            "admin_role":     admin_role,
+            "bot_admin_role": bot_admin_role or None,   # may be null (optional)
+            "picks_channel":  int(picks_channel),
+            "log_keep":       5,
+        }
     }
-    with CONFIG_FILE.open("w") as fh:
-        cfg.write(fh)
+    with CONFIG_FILE.open("w", encoding="utf-8") as fh:
+        yaml.safe_dump(data, fh, default_flow_style=False, sort_keys=False)
     print(f"  ✓ Config written → {CONFIG_FILE}  (edit this file to change settings later)")
 
 

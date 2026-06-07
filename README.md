@@ -11,35 +11,39 @@ install.py / install.sh / install.cmd  — first-time installer (run once)
 run.py     / run.sh     / run.cmd      — start the bot
 setup.py                               — interactive config wizard (called by installer)
 main.py                                — Discord bot entry point (pulls latest on startup)
-config.py                              — reads bot_config.ini + decrypts secrets
-bot_config.ini.example                 — template for the plain-text config
+paths.py                               — central definitions for all config/secret file paths
+config.py                              — reads config/bot_config.yaml + decrypts secrets
+config/
+  bot_config.yaml.example      — template for the YAML config
 database/
-  credentials.py               — decrypts .db_creds.enc and builds the connection URL
+  credentials.py               — decrypts config/db_creds.pkl and builds the connection URL
   connection.py                — asyncpg pool + schema init
   queries.py                   — all SQL helpers
 cogs/
-  checks.py                    — shared admin-role permission check
+  checks.py                    — shared admin-role permission checks
   admin.py                     — /setup
+  management.py                — /bot restart
+  settings.py                  — /rounds, /years
   teams.py                     — /team add|rename|remove|list
   picks.py                     — /pick add|trade|remove|refresh
   season.py                    — /season_prep
 fantasy-hockey-bot.service     — systemd unit for Linux (alternative to run.sh)
 ```
 
-### Files created by setup.py (never committed)
+### Files created by setup.py (never committed — all live in `config/`)
 
 | File | Contents | Format |
 |---|---|---|
-| `bot_config.ini` | Guild ID, admin role, channel ID | Plain text — edit by hand to change |
-| `.token.key` | Fernet encryption key (protects both encrypted files) | Binary, chmod 600 |
-| `.token.enc` | Encrypted Discord bot token | Fernet ciphertext, chmod 600 |
-| `.db_creds.enc` | Encrypted pickle: DB host, port, name, `FantasyBot` user + password | Encrypted pickle, chmod 600 |
+| `config/bot_config.yaml` | Guild ID, admin role, optional bot-manager role, channel ID, log_keep | YAML — edit by hand to change |
+| `config/token_key.pkl` | Fernet encryption key (protects both secrets) | Pickled bytes, chmod 600 |
+| `config/token.pkl` | Encrypted Discord bot token | Pickled ciphertext, chmod 600 |
+| `config/db_creds.pkl` | Encrypted DB host, port, name, `FantasyBot` user + password | Pickled ciphertext, chmod 600 |
 
 ---
 
 ## How updates work
 
-Every time the bot starts it runs `git pull origin main` before connecting to Discord, so it is always on the latest code. Because the repo was cloned over HTTPS without credentials, pushing is not possible — anyone running the bot can only pull. All commits must come from an authorised GitHub account.
+Every time the bot starts it runs `git pull` before connecting to Discord, so it is always on the latest code. Because the repo was cloned over HTTPS without credentials, pushing is not possible — anyone running the bot can only pull. All commits must come from an authorised GitHub account. (Set `NO_PULL=1` to skip the pull when testing local changes.)
 
 ---
 
@@ -78,10 +82,10 @@ The installer will:
 - Create `./venv` and install all dependencies
 - Auto-detect PostgreSQL on `localhost:5432` / `:5433` (asks for remote host/port if not found)
 - Prompt for DB name, master username, master password → creates the DB + `FantasyBot` app user
-- Prompt for Discord bot token → encrypted in `.token.enc` / `.token.key`
-- Prompt for guild ID, admin role, channel ID → saved to `bot_config.ini`
+- Prompt for Discord bot token → encrypted in `config/token.pkl` / `config/token_key.pkl`
+- Prompt for guild ID, admin role, optional bot-manager role, channel ID → saved to `config/bot_config.yaml`
 
-To change **guild/role/channel settings** later, open `bot_config.ini` in any text editor.
+To change **guild/role/channel settings** later, open `config/bot_config.yaml` in any text editor.
 To update the **Discord token** or **DB credentials**, run `python setup.py` again.
 
 ---

@@ -20,7 +20,7 @@ if not exist "%PYTHON_BIN%" (
     exit /b 1
 )
 
-for %%F in (.token.key .token.enc .db_creds.enc bot_config.ini) do (
+for %%F in (config\token_key.pkl config\token.pkl config\db_creds.pkl config\bot_config.yaml) do (
     if not exist "%SCRIPT_DIR%%%F" (
         echo ERROR: Required config file '%%F' is missing.
         echo        Run install.cmd to complete setup.

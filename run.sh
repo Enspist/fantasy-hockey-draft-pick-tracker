@@ -19,7 +19,7 @@ if [ ! -f "$PYTHON_BIN" ]; then
     exit 1
 fi
 
-for secret in .token.key .token.enc .db_creds.enc bot_config.ini; do
+for secret in config/token_key.pkl config/token.pkl config/db_creds.pkl config/bot_config.yaml; do
     if [ ! -f "$SCRIPT_DIR/$secret" ]; then
         echo "ERROR: Required config file '$secret' is missing."
         echo "       Run install.sh to complete setup."
