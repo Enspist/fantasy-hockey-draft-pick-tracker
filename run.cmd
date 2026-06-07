@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================
-REM  Fantasy Hockey Draft Pick Tracker -- Windows launcher
+REM  Fantasy Draft Pick Tracker -- Windows launcher
 REM  Usage:  Double-click run.cmd  OR  run from Command Prompt
 REM
 REM  Pulls the latest code from main, then starts the Discord bot.
@@ -33,7 +33,7 @@ REM ── Start the bot ──────────────────�
 REM    Set NO_PULL=1 to skip the git pull on startup (useful for
 REM    testing local changes that haven't been pushed yet).
 REM    Example:  set NO_PULL=1 && run.cmd
-echo   Starting Fantasy Hockey bot...
+echo   Starting Fantasy Draft bot...
 echo   (Press Ctrl+C or close this window to stop)
 echo.
 "%PYTHON_BIN%" "%SCRIPT_DIR%main.py"

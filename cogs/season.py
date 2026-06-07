@@ -26,7 +26,7 @@ class Season(commands.Cog):
         embed = discord.Embed(
             title=f"Season {year} — Draft Pick Movement Checklist",
             description=(
-                "Before the draft, make the following pick transfers inside your fantasy hockey app "
+                "Before the draft, make the following pick transfers inside your fantasy app "
                 "so ownership is accurately reflected."
             ),
             color=discord.Color.orange(),

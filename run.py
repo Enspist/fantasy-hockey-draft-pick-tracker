@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Fantasy Hockey Draft Pick Tracker — cross-platform launcher.
+Fantasy Draft Pick Tracker — cross-platform launcher.
 
 Works on Windows, Linux, and macOS.  Run with:
     python run.py   OR   python3 run.py
@@ -44,7 +44,7 @@ def _check_prerequisites() -> None:
 
 def main() -> None:
     print("=" * 60)
-    print("  Fantasy Hockey Draft Pick Tracker — Starting")
+    print("  Fantasy Draft Pick Tracker — Starting")
     print("=" * 60)
     print()
 

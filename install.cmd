@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================
-REM  Fantasy Hockey Draft Pick Tracker -- Windows installer
+REM  Fantasy Draft Pick Tracker -- Windows installer
 REM  Usage:  Double-click install.cmd  OR  run from Command Prompt
 REM ============================================================
 setlocal EnableDelayedExpansion
@@ -13,7 +13,7 @@ set "PYTHON_BIN=%VENV_DIR%\Scripts\python.exe"
 set "PIP_BIN=%VENV_DIR%\Scripts\pip.exe"
 
 echo ============================================================
-echo   Fantasy Hockey Draft Pick Tracker -- Installer
+echo   Fantasy Draft Pick Tracker -- Installer
 echo ============================================================
 echo.
 

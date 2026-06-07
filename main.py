@@ -97,7 +97,7 @@ def pull_latest() -> None:
 
 # ── Bot ───────────────────────────────────────────────────────────────────────
 
-class FantasyHockeyBot(commands.Bot):
+class FantasyDraftBot(commands.Bot):
     def __init__(self) -> None:
         intents = discord.Intents.default()
         super().__init__(command_prefix="!", intents=intents)
@@ -154,7 +154,7 @@ class FantasyHockeyBot(commands.Bot):
 
 async def _run_bot() -> bool:
     """Start the bot; return True if a restart was requested."""
-    bot = FantasyHockeyBot()
+    bot = FantasyDraftBot()
     async with bot:
         await bot.start(config.DISCORD_TOKEN)
     return bot._restart_requested

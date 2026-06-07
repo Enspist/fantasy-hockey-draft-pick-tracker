@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Fantasy Hockey Draft Pick Tracker — cross-platform installer.
+Fantasy Draft Pick Tracker — cross-platform installer.
 
 Works on Windows, Linux, and macOS.  Run with any Python 3.11+:
     python install.py   OR   python3 install.py
@@ -106,7 +106,7 @@ def run_setup_wizard() -> None:
 
 def main() -> None:
     print("=" * 60)
-    print("  Fantasy Hockey Draft Pick Tracker — Installer")
+    print("  Fantasy Draft Pick Tracker — Installer")
     print("=" * 60)
 
     _banner("Locating Python 3.11+")

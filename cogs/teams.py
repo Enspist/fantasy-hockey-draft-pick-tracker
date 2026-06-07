@@ -14,7 +14,7 @@ class Teams(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    team = app_commands.Group(name="team", description="Manage fantasy hockey teams.")
+    team = app_commands.Group(name="team", description="Manage fantasy teams.")
 
     @team.command(name="add", description="Add a new team to the league.")
     @app_commands.describe(name="Team name to add.")

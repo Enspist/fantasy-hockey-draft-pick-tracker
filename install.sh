@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-#  Fantasy Hockey Draft Pick Tracker — Linux/macOS installer
+#  Fantasy Draft Pick Tracker — Linux/macOS installer
 #  Usage:  bash install.sh
 # ============================================================
 set -euo pipefail
@@ -13,7 +13,7 @@ PYTHON_BIN="$VENV_DIR/bin/python"
 PIP_BIN="$VENV_DIR/bin/pip"
 
 echo "============================================================"
-echo "  Fantasy Hockey Draft Pick Tracker — Installer"
+echo "  Fantasy Draft Pick Tracker — Installer"
 echo "============================================================"
 echo ""
 

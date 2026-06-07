@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-#  Fantasy Hockey Draft Pick Tracker — Linux/macOS launcher
+#  Fantasy Draft Pick Tracker — Linux/macOS launcher
 #  Usage:  bash run.sh
 #
 #  Pulls the latest code from main, then starts the Discord bot.
@@ -31,7 +31,7 @@ done
 # Set NO_PULL=1 to skip the git pull on startup — useful when
 # testing local changes that haven't been pushed yet.
 # Example:  NO_PULL=1 bash run.sh
-echo "  Starting Fantasy Hockey bot..."
+echo "  Starting Fantasy Draft bot..."
 echo "  (Press Ctrl+C to stop)"
 echo ""
 "$PYTHON_BIN" "$SCRIPT_DIR/main.py"

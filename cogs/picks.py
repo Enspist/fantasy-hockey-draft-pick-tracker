@@ -23,7 +23,7 @@ def _round_label(r: int) -> str:
 # ── Per-year embed builder ────────────────────────────────────────────────────
 
 def _year_embed_title(year: int) -> str:
-    return f"🏒 {year} Draft Picks"
+    return f"🏆 {year} Draft Picks"
 
 
 def _cell_content(team_name: str, year: int, picks: list) -> str:
@@ -238,19 +238,6 @@ async def _ac_new_owner(
     ][:25]
 
 
-async def _ac_move_year(
-    interaction: discord.Interaction, current: str
-) -> list[app_commands.Choice[int]]:
-    """Years that have at least one pick needing to be moved."""
-    pool  = interaction.client.pool
-    years = await queries.get_traded_pick_years(pool, interaction.guild_id)
-    return [
-        app_commands.Choice(name=str(y), value=y)
-        for y in years
-        if not current or current in str(y)
-    ][:25]
-
-
 # ── Cog ───────────────────────────────────────────────────────────────────────
 
 class Picks(commands.Cog):
@@ -393,35 +380,6 @@ class Picks(commands.Cog):
 
     # ── /pick refresh ─────────────────────────────────────────────────────────
 
-    # ── /pick moves ───────────────────────────────────────────────────────────
-
-    @pick.command(
-        name="moves",
-        description="List the picks that need to be moved in the fantasy app for a given year.",
-    )
-    @app_commands.describe(year="Draft year — only years with picks to move appear.")
-    @app_commands.autocomplete(year=_ac_move_year)
-    async def pick_moves(self, interaction: discord.Interaction, year: int) -> None:
-        guild_id = interaction.guild_id
-        traded   = await queries.get_traded_picks(self.bot.pool, guild_id)
-        moves    = [p for p in traded if p["season_year"] == year]
-
-        embed = discord.Embed(
-            title=f"📋 {year} Picks To Move",
-            color=discord.Color.orange(),
-        )
-        if not moves:
-            embed.description = f"No picks need to be moved for {year} — all are with their original teams."
-        else:
-            lines = [
-                f"• Move **{p['original_team']}**'s {_round_label(p['round'])} round pick → **{p['current_team']}**"
-                for p in sorted(moves, key=lambda x: x["round"])
-            ]
-            embed.description = "\n".join(lines)
-            embed.set_footer(text="Make these transfers inside your fantasy hockey app.")
-
-        await interaction.response.send_message(embed=embed)
-
     # ── /pick refresh ─────────────────────────────────────────────────────────
 
     @pick.command(
@@ -462,9 +420,3 @@ async def setup(bot: commands.Bot) -> None:
     trade_cmd.autocomplete("new_owner")(_ac_new_owner)
     log.info("Autocomplete callbacks registered on 'pick trade'.")
 
-    moves_cmd = pick_group.get_command("moves")
-    if moves_cmd is not None:
-        moves_cmd.autocomplete("year")(_ac_move_year)
-        log.info("Autocomplete callbacks registered on 'pick moves'.")
-    else:
-        log.error("Autocomplete setup: 'pick moves' command not found in tree.")

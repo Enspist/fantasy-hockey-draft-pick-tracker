@@ -1,0 +1,14 @@
+[Unit]
+Description=Fantasy Draft Pick Tracker Discord Bot
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=discord
+WorkingDirectory=/opt/fantasy-draft-bot
+ExecStart=/opt/fantasy-draft-bot/venv/bin/python main.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

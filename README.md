@@ -1,6 +1,6 @@
-# Fantasy Hockey Draft Pick Tracker
+# Fantasy Draft Pick Tracker
 
-Discord bot to keep track of and manage draft picks. Designed to replace the Fantrax paid version of trading future draft picks.
+Discord bot to keep track of and manage fantasy-sports draft picks. Works for any fantasy league (hockey, football, basketball, baseball, etc.). Designed to replace the Fantrax paid version of trading future draft picks.
 
 ---
 
@@ -28,7 +28,7 @@ cogs/
   teams.py                     — /team add|rename|remove|list
   picks.py                     — /pick add|trade|remove|refresh
   season.py                    — /season_prep
-fantasy-hockey-bot.service     — systemd unit for Linux (alternative to run.sh)
+fantasy-draft-bot.service      — systemd unit for Linux (alternative to run.sh)
 ```
 
 ### Files created by setup.py (never committed — all live in `config/`)
@@ -123,12 +123,12 @@ cd fantasy-hockey-draft-pick-tracker
 bash install.sh
 
 # Install and start the service
-sudo cp fantasy-hockey-bot.service /etc/systemd/system/
+sudo cp fantasy-draft-bot.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now fantasy-hockey-bot
+sudo systemctl enable --now fantasy-draft-bot
 
 # View logs
-sudo journalctl -u fantasy-hockey-bot -f
+sudo journalctl -u fantasy-draft-bot -f
 ```
 
 ---
@@ -164,4 +164,4 @@ sudo journalctl -u fantasy-hockey-bot -f
 
 After any change the bot automatically edits the last board embed it posted in the configured channel (or posts a new one). Each team's field lists every pick it currently holds, with a note showing the original team if the pick was traded.
 
-The `/season_prep` command generates a separate embed listing every pick that changed hands, formatted as actionable steps for whoever administers the fantasy hockey website.
+The `/season_prep` command generates a separate embed listing every pick that changed hands, formatted as actionable steps for whoever administers the fantasy league website.

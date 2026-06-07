@@ -6,7 +6,7 @@ key in config/token_key.pkl yields a pickled dict:
     {
         "host":     str,   # e.g. "localhost"
         "port":     int,   # e.g. 5432
-        "dbname":   str,   # e.g. "fantasy_hockey"
+        "dbname":   str,   # e.g. "fantasy_draft"
         "user":     str,   # always "FantasyBot"
         "password": str,   # always "FaNtAsYb0T"
     }

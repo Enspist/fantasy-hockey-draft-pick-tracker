@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Initial setup script for the Fantasy Hockey Draft Pick Tracker bot.
+Initial setup script for the Fantasy Draft Pick Tracker bot.
 
 Run once before starting the bot for the first time:
     python setup.py
@@ -262,14 +262,14 @@ def _write_config(guild_id: str, admin_role: str, picks_channel: str, bot_admin_
 
 def main() -> None:
     print("=" * 60)
-    print("  Fantasy Hockey Draft Pick Tracker — Initial Setup")
+    print("  Fantasy Draft Pick Tracker — Initial Setup")
     print("=" * 60)
     print()
 
     # ── 1. PostgreSQL ──────────────────────────────────────────────
     print("── PostgreSQL ──────────────────────────────────────────────")
     host, port = resolve_postgres_host()
-    dbname       = _prompt("  Database name", default="fantasy_hockey")
+    dbname       = _prompt("  Database name", default="fantasy_draft")
     master_user  = _prompt("  Master PostgreSQL username", default="postgres")
     master_pass  = _prompt("  Master PostgreSQL password", secret=True)
     print()
