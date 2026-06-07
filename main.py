@@ -129,11 +129,15 @@ class FantasyHockeyBot(commands.Bot):
         # commands (with autocomplete) are kept.
         self.tree.copy_global_to(guild=guild)
 
-        # 1. Remove leftover global commands from Discord (clears duplicates)
+        # 1. Remove leftover global commands from Discord (clears duplicates).
+        #    NOTE: global command removal can take up to 1 hour to propagate
+        #    to clients — this is a Discord limitation, not a bug.
         self.tree.clear_commands(guild=None)
         await self.tree.sync(guild=None)
+        log.info("Global commands cleared (duplicates removed; may take up to 1h to vanish in clients).")
 
-        # 2. Sync the full command set (with autocomplete) to the guild
+        # 2. Sync the full command set (with autocomplete) to the guild —
+        #    these update instantly.
         await self.tree.sync(guild=guild)
         log.info("Slash commands synced to guild %s.", config.GUILD_ID)
 
