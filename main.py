@@ -117,10 +117,22 @@ class FantasyHockeyBot(commands.Bot):
             log.info("Loaded cog: %s", cog)
 
         guild = discord.Object(id=config.GUILD_ID)
-        # Clear any stale guild-specific commands before re-syncing so Discord
-        # receives a clean payload that includes all autocomplete metadata.
-        self.tree.clear_commands(guild=guild)
+
+        # Cogs register their commands globally on the tree. We copy them to
+        # the guild (which preserves autocomplete callbacks) so they appear
+        # instantly, then wipe the GLOBAL command set on Discord's side.
+        #
+        # Why: an earlier version synced commands globally. Those global
+        # commands persist on Discord and show up as DUPLICATES alongside the
+        # guild copies. Pushing an empty global sync removes them. The guild
+        # commands (with autocomplete) are kept.
         self.tree.copy_global_to(guild=guild)
+
+        # 1. Remove leftover global commands from Discord (clears duplicates)
+        self.tree.clear_commands(guild=None)
+        await self.tree.sync(guild=None)
+
+        # 2. Sync the full command set (with autocomplete) to the guild
         await self.tree.sync(guild=guild)
         log.info("Slash commands synced to guild %s.", config.GUILD_ID)
 
