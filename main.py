@@ -1,6 +1,8 @@
 import asyncio
 import logging
+import os
 import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -72,7 +74,6 @@ def pull_latest() -> None:
     Set the environment variable NO_PULL=1 to skip the pull entirely,
     which is useful when testing local changes that haven't been pushed yet.
     """
-    import os
     if os.environ.get("NO_PULL"):
         log.info("NO_PULL is set — skipping git pull.")
         return
@@ -155,20 +156,31 @@ async def _run_bot() -> bool:
     return bot._restart_requested
 
 
-async def main() -> None:
+def _reexec() -> None:
+    """
+    Replace the current process with a fresh `python main.py`.
+
+    Using os.execv (rather than an in-process loop) guarantees that a
+    /bot restart fully reloads all code from disk and re-runs pull_latest(),
+    so code changes are actually picked up. The terminal/window stays open
+    because execv reuses the same process and its stdio.
+    """
+    log.info("Re-launching process to reload code…")
+    python = sys.executable
+    script = os.path.abspath(__file__)
+    os.execv(python, [python, script])  # never returns
+
+
+def main() -> None:
     setup_logging()
     pull_latest()
-    while True:
-        log.info("Starting bot…")
-        restart = await _run_bot()
-        if restart:
-            log.info("Restart requested — restarting in 3 seconds…")
-            setup_logging()          # fresh log file for the new session
-            await asyncio.sleep(3)
-        else:
-            log.info("Bot shut down cleanly.")
-            break
+    log.info("Starting bot…")
+    restart = asyncio.run(_run_bot())
+    if restart:
+        _reexec()                # replaces this process; does not return
+    else:
+        log.info("Bot shut down cleanly.")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
