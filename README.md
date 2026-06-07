@@ -117,6 +117,11 @@ Press `Ctrl+C` to stop.
 
 ## Linux server deployment (systemd)
 
+For a full step-by-step guide (installing PostgreSQL, an LXC container, running
+as a background service that survives terminal close), see **[DEPLOY.md](DEPLOY.md)**.
+
+Quick version:
+
 ```bash
 git clone https://github.com/Enspist/fantasy-hockey-draft-pick-tracker.git
 cd fantasy-hockey-draft-pick-tracker
