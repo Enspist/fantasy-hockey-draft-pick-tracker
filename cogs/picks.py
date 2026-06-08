@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 
 import discord
@@ -9,6 +10,8 @@ from discord.ext import commands
 from config import REPLY_DELETE_AFTER
 from database import queries
 from cogs.checks import has_admin_role
+
+log = logging.getLogger(__name__)
 
 ORDINALS = {
     1: "1st", 2: "2nd", 3: "3rd", 4: "4th", 5: "5th",
@@ -110,21 +113,30 @@ def _is_board_message(msg: discord.Message, bot_user: discord.ClientUser) -> boo
     )
 
 
-async def post_pick_board(bot: commands.Bot, guild_id: int, *, purge: bool = False) -> None:
+async def post_pick_board(bot: commands.Bot, guild_id: int, *, purge: bool = False) -> str:
     """
     Post or update one message per tracked year in the configured channel.
-    Years are processed in ascending order so new posts appear chronologically.
 
     If purge=True, delete all existing board messages first and post fresh
-    ones (used by /pick refresh).  Otherwise existing year messages are
-    edited in place and any missing years are appended.
+    ones (used by /pick refresh). Otherwise existing year messages are edited
+    in place and any missing years are appended.
+
+    Returns a status string for the caller to report:
+      "ok"             — posted/updated successfully
+      "no_channel"     — no channel configured (run /setup)
+      "channel_missing"— configured channel no longer exists / not visible
+      "forbidden"      — bot lacks permission to post in the channel
     """
     channel_id = await queries.get_channel(bot.pool, guild_id)
     if not channel_id:
-        return
+        log.warning("post_pick_board: no channel configured for guild %s.", guild_id)
+        return "no_channel"
+
     channel = bot.get_channel(channel_id)
     if not isinstance(channel, discord.TextChannel):
-        return
+        log.warning("post_pick_board: channel %s not found/visible for guild %s.",
+                    channel_id, guild_id)
+        return "channel_missing"
 
     teams    = await queries.list_teams(bot.pool, guild_id)
     picks    = await queries.get_all_picks(bot.pool, guild_id)
@@ -133,28 +145,35 @@ async def post_pick_board(bot: commands.Bot, guild_id: int, *, purge: bool = Fal
     current_year = datetime.now().year
     years        = list(range(current_year, current_year + settings["years_ahead"]))
 
-    if purge:
-        # Delete every existing board message, then repost all years fresh
+    try:
+        if purge:
+            # Delete every existing board message, then repost all years fresh
+            async for msg in channel.history(limit=200):
+                if _is_board_message(msg, bot.user):
+                    await msg.delete()
+            for year in years:
+                await channel.send(embed=_build_year_embed(year, teams, picks))
+            return "ok"
+
+        # Map existing year messages by title so we can edit in place
+        existing: dict[str, discord.Message] = {}
         async for msg in channel.history(limit=200):
             if _is_board_message(msg, bot.user):
-                await msg.delete()
+                existing[msg.embeds[0].title] = msg
+
         for year in years:
-            await channel.send(embed=_build_year_embed(year, teams, picks))
-        return
+            embed = _build_year_embed(year, teams, picks)
+            title = _year_embed_title(year)
+            if title in existing:
+                await existing[title].edit(embed=embed)
+            else:
+                await channel.send(embed=embed)
+        return "ok"
 
-    # Map existing year messages by title so we can edit in place
-    existing: dict[str, discord.Message] = {}
-    async for msg in channel.history(limit=200):
-        if _is_board_message(msg, bot.user):
-            existing[msg.embeds[0].title] = msg
-
-    for year in years:
-        embed = _build_year_embed(year, teams, picks)
-        title = _year_embed_title(year)
-        if title in existing:
-            await existing[title].edit(embed=embed)
-        else:
-            await channel.send(embed=embed)
+    except discord.Forbidden as exc:
+        log.error("post_pick_board: missing permissions in channel #%s (%s): %s",
+                  channel.name, channel_id, exc)
+        return "forbidden"
 
 
 # ── Autocomplete callbacks (module-level for reliable binding) ────────────────
@@ -387,10 +406,28 @@ class Picks(commands.Cog):
         description="Delete and re-post all year boards (clears out any stale messages).",
     )
     async def pick_refresh(self, interaction: discord.Interaction) -> None:
-        await interaction.response.send_message(
-            "Refreshing pick boards…", ephemeral=True, delete_after=REPLY_DELETE_AFTER
+        await interaction.response.defer(ephemeral=True)
+        status = await post_pick_board(self.bot, interaction.guild_id, purge=True)
+
+        messages = {
+            "ok": "✅ Pick boards refreshed.",
+            "no_channel": (
+                "⚠️ No channel is configured yet. Run **/setup** and choose the "
+                "channel where the boards should be posted."
+            ),
+            "channel_missing": (
+                "⚠️ The configured channel no longer exists or I can't see it. "
+                "Run **/setup** again to pick a valid channel."
+            ),
+            "forbidden": (
+                "⚠️ I don't have permission to post in the configured channel. "
+                "I need **View Channel**, **Send Messages**, **Embed Links**, and "
+                "**Read Message History** there."
+            ),
+        }
+        await interaction.followup.send(
+            messages.get(status, f"Unexpected status: {status}"), ephemeral=True
         )
-        await post_pick_board(self.bot, interaction.guild_id, purge=True)
 
 
 async def setup(bot: commands.Bot) -> None:
