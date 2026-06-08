@@ -76,11 +76,18 @@ def _cell_content(team_name: str, year: int, picks: list) -> str:
 
 def _build_year_embed(year: int, teams: list, picks: list) -> discord.Embed:
     """
-    Build the embed for a single year using two inline fields:
-      Team  | Picks
+    Build the embed for a single year as a single monospace code block, with
+    each team and its picks on the SAME logical line:
 
-    Inline fields render side-by-side on all clients, so Team and Picks
-    always sit on one line with no code-block wrapping issues.
+        Team                  | Picks
+        ----------------------+------------------------------
+        Alaska Whales         | 1-2 4-5 1(Bay Bladers) ...
+        Bay Bladers           | 3(Callahan Auto Parts)
+
+    Using one code block (rather than two separate inline fields) keeps each
+    team's picks anchored to its own row. If a pick list is long enough to
+    wrap, it wraps under that team only — it can never shift another team's
+    row out of alignment.
     """
     embed = discord.Embed(
         title=_year_embed_title(year),
@@ -92,11 +99,14 @@ def _build_year_embed(year: int, teams: list, picks: list) -> discord.Embed:
         embed.description = "*(No teams have been added yet.)*"
         return embed
 
-    team_col  = "\n".join(team_names)
-    picks_col = "\n".join(_cell_content(name, year, picks) for name in team_names)
+    name_w = max(max(len(n) for n in team_names), len("Team"))
 
-    embed.add_field(name="Team",  value=team_col,  inline=True)
-    embed.add_field(name="Picks", value=picks_col, inline=True)
+    lines = [f"{'Team'.ljust(name_w)} | Picks",
+             f"{'-' * name_w}-+-{'-' * 6}"]
+    for name in team_names:
+        lines.append(f"{name.ljust(name_w)} | {_cell_content(name, year, picks)}")
+
+    embed.description = "```\n" + "\n".join(lines) + "\n```"
 
     return embed
 
