@@ -80,7 +80,7 @@ def _build_year_embed(year: int, teams: list, picks: list) -> discord.Embed:
     Build the embed for a single year as a single monospace code block, with
     each team and its picks on the SAME logical line:
 
-        Team                  | Picks
+        Team                  | Rounds
         ----------------------+------------------------------
         Alaska Whales         | 1-2 4-5 1(Bay Bladers) ...
         Bay Bladers           | 3(Callahan Auto Parts)
@@ -102,7 +102,7 @@ def _build_year_embed(year: int, teams: list, picks: list) -> discord.Embed:
 
     name_w = max(max(len(n) for n in team_names), len("Team"))
 
-    lines = [f"{'Team'.ljust(name_w)} | Picks",
+    lines = [f"{'Team'.ljust(name_w)} | Rounds",
              f"{'-' * name_w}-+-{'-' * 6}"]
     for name in team_names:
         lines.append(f"{name.ljust(name_w)} | {_cell_content(name, year, picks)}")
