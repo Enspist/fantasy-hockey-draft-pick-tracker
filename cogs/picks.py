@@ -75,20 +75,50 @@ def _cell_content(team_name: str, year: int, picks: list) -> str:
     return " ".join(parts)
 
 
+# Blank-line placeholder. A zero-width space keeps Discord from trimming
+# empty lines in embed field values (which would break alignment).
+_ZWS = "​"
+
+# How many characters wide to wrap the Rounds column before forcing a new
+# line. Kept modest so Discord is unlikely to wrap our lines a second time.
+_ROUNDS_WRAP_WIDTH = 28
+
+
+def _wrap_rounds(text: str, width: int = _ROUNDS_WRAP_WIDTH) -> list[str]:
+    """
+    Wrap a rounds string onto multiple lines at word (space) boundaries,
+    never splitting an individual entry like '1(Bay Bladers)'.
+    """
+    words = text.split(" ")
+    lines: list[str] = []
+    cur = ""
+    for w in words:
+        if not cur:
+            cur = w
+        elif len(cur) + 1 + len(w) <= width:
+            cur += " " + w
+        else:
+            lines.append(cur)
+            cur = w
+    if cur:
+        lines.append(cur)
+    return lines or ["-"]
+
+
 def _build_year_embed(year: int, teams: list, picks: list) -> discord.Embed:
     """
-    Build the embed for a single year as a single monospace code block, with
-    each team and its picks on the SAME logical line:
+    Build the embed for a single year using two inline fields side by side:
 
-        Team                  | Rounds
-        ----------------------+------------------------------
-        Alaska Whales         | 1-2 4-5 1(Bay Bladers) ...
-        Bay Bladers           | 3(Callahan Auto Parts)
+        Team            Rounds
+        Alaska Whales   1-2 4-5 1(Bay Bladers)
+                        2(Berard's Army)
+        Bay Bladers     3(Callahan Auto Parts)
 
-    Using one code block (rather than two separate inline fields) keeps each
-    team's picks anchored to its own row. If a pick list is long enough to
-    wrap, it wraps under that team only — it can never shift another team's
-    row out of alignment.
+    Alignment is kept by controlling the wrapping ourselves: each team's
+    rounds are wrapped into a fixed number of lines, and the Team column is
+    padded with the same number of (zero-width) blank lines. Both inline
+    fields therefore have an identical line count per team, so the columns
+    stay locked together regardless of Discord's own rendering.
     """
     embed = discord.Embed(
         title=_year_embed_title(year),
@@ -100,14 +130,29 @@ def _build_year_embed(year: int, teams: list, picks: list) -> discord.Embed:
         embed.description = "*(No teams have been added yet.)*"
         return embed
 
-    name_w = max(max(len(n) for n in team_names), len("Team"))
+    team_lines: list[str] = []
+    round_lines: list[str] = []
 
-    lines = [f"{'Team'.ljust(name_w)} | Rounds",
-             f"{'-' * name_w}-+-{'-' * 6}"]
     for name in team_names:
-        lines.append(f"{name.ljust(name_w)} | {_cell_content(name, year, picks)}")
+        wrapped = _wrap_rounds(_cell_content(name, year, picks))
 
-    embed.description = "```\n" + "\n".join(lines) + "\n```"
+        # Team name on the first line; blank (ZWS) lines for any wrap overflow
+        team_lines.append(name)
+        team_lines.extend([_ZWS] * (len(wrapped) - 1))
+        round_lines.extend(wrapped)
+
+        # One blank separator line after each team (both columns) to keep
+        # rows visually distinct and perfectly aligned.
+        team_lines.append(_ZWS)
+        round_lines.append(_ZWS)
+
+    # Drop the trailing separator line from both columns
+    if team_lines:
+        team_lines.pop()
+        round_lines.pop()
+
+    embed.add_field(name="Team",   value="\n".join(team_lines),  inline=True)
+    embed.add_field(name="Rounds", value="\n".join(round_lines), inline=True)
 
     return embed
 
@@ -185,6 +230,11 @@ async def post_pick_board(bot: commands.Bot, guild_id: int, *, purge: bool = Fal
         log.error("post_pick_board: missing permissions in channel #%s (%s): %s",
                   channel.name, channel_id, exc)
         return "forbidden"
+    except discord.HTTPException as exc:
+        # Most likely an embed field exceeding Discord's 1024-char limit.
+        log.error("post_pick_board: Discord rejected the board embed "
+                  "(field too long?) in #%s: %s", channel.name, exc)
+        return "too_long"
 
 
 # ── Autocomplete callbacks (module-level for reliable binding) ────────────────
@@ -410,8 +460,6 @@ class Picks(commands.Cog):
 
     # ── /pick refresh ─────────────────────────────────────────────────────────
 
-    # ── /pick refresh ─────────────────────────────────────────────────────────
-
     @pick.command(
         name="refresh",
         description="Delete and re-post all year boards (clears out any stale messages).",
@@ -434,6 +482,11 @@ class Picks(commands.Cog):
                 "⚠️ I don't have permission to post in the configured channel. "
                 "I need **View Channel**, **Send Messages**, **Embed Links**, and "
                 "**Read Message History** there."
+            ),
+            "too_long": (
+                "⚠️ A year's board is too large for a single Discord embed "
+                "(over the 1024-character column limit). Let the developer know "
+                "so the layout can be split across multiple messages."
             ),
         }
         await interaction.followup.send(
