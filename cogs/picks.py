@@ -31,13 +31,14 @@ def _year_embed_title(year: int) -> str:
 
 def _cell_content(team_name: str, year: int, picks: list) -> str:
     """
-    Picks for one team in one year.
+    Picks for one team in one year, ordered by round so picks in the same
+    round sit together.
 
-    All OWN picks are grouped first and compressed into ranges
-    (1 2 3 4 5 → 1-5).  Picks ACQUIRED via trade are listed afterwards,
-    each labelled with its original owner (e.g. 3(Alpha)).  A pick that has
-    returned to its original team counts as own again, so it merges cleanly
-    into the own-range rather than splitting it.
+    Consecutive OWN picks compress into a range (1 2 3 4 5 → 1-5). An acquired
+    pick is shown with its original owner (e.g. 1(Alpha)) and breaks the range
+    at its round, keeping everything in round order:
+
+        own 1, acquired 1 from Alpha, own 2-5  →  "1 1(Alpha) 2-5"
 
     Returns '-' if the team has no picks for that year.
     """
@@ -48,28 +49,28 @@ def _cell_content(team_name: str, year: int, picks: list) -> str:
     if not team_picks:
         return "-"
 
-    own_rounds = sorted(p["round"] for p in team_picks if p["original_team"] == team_name)
-    acquired   = sorted(
-        ((p["round"], p["original_team"]) for p in team_picks if p["original_team"] != team_name),
+    # (round, is_acquired) sorted by round; own picks before acquired in a tie
+    items = sorted(
+        ((p["round"], p["original_team"] != team_name, p["original_team"]) for p in team_picks),
         key=lambda x: (x[0], x[1]),
     )
 
     parts: list[str] = []
-
-    # Compress own picks into consecutive ranges
     i = 0
-    while i < len(own_rounds):
-        start = end = own_rounds[i]
-        j = i + 1
-        while j < len(own_rounds) and own_rounds[j] == end + 1:
-            end = own_rounds[j]
-            j += 1
-        parts.append(f"{start}-{end}" if end > start else str(start))
-        i = j
-
-    # Append acquired picks, labelled with their original owner
-    for r, orig in acquired:
-        parts.append(f"{r}({orig})")
+    while i < len(items):
+        r, acquired, orig = items[i]
+        if acquired:
+            parts.append(f"{r}({orig})")
+            i += 1
+        else:
+            # Extend a run of consecutive OWN picks
+            start = end = r
+            j = i + 1
+            while j < len(items) and not items[j][1] and items[j][0] == end + 1:
+                end = items[j][0]
+                j += 1
+            parts.append(f"{start}-{end}" if end > start else str(start))
+            i = j
 
     return " ".join(parts)
 
